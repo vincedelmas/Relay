@@ -1,65 +1,20 @@
 import path from "path";
-import {defineConfig, loadEnv} from "vite";
+import {defineConfig} from "vite";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import {tanstackStart} from "@tanstack/react-start/plugin/vite";
 import react, {reactCompilerPreset} from "@vitejs/plugin-react";
-import {reactClickToComponent} from "vite-plugin-react-click-to-component";
 
 
-export default defineConfig(({ mode }) => ({
-    server: {
-        allowedHosts: [
-            new URL(loadEnv(mode, import.meta.dirname, "VITE_BASE_URL").VITE_BASE_URL ?? "http://localhost:3000").hostname,
-        ],
-    },
+export default defineConfig({
     resolve: {
         tsconfigPaths: true,
         alias: {
             "@": path.resolve(import.meta.dirname, "./src"),
         },
     },
-    build: {
-        rolldownOptions: {
-            output: {
-                manualChunks: (id) => {
-                    if (
-                        id.includes("/node_modules/react/") ||
-                        id.includes("/node_modules/react-dom/") ||
-                        id.includes("/node_modules/scheduler/")
-                    ) {
-                        return "react";
-                    }
-
-                    if (
-                        id.includes("/node_modules/@tanstack/react-router") ||
-                        id.includes("/node_modules/@tanstack/router-core") ||
-                        id.includes("/node_modules/@tanstack/history")
-                    ) {
-                        return "tanstack-router";
-                    }
-
-                    if (
-                        id.includes("/node_modules/@tanstack/react-query") ||
-                        id.includes("/node_modules/@tanstack/query-core")
-                    ) {
-                        return "tanstack-query";
-                    }
-
-                    if (id.includes("/node_modules/lucide-react")) {
-                        return "icons";
-                    }
-                },
-            },
-        },
-    },
     plugins: [
         tanstackStart({
-            prerender: {
-                failOnError: false,
-                retryCount: 3,
-                retryDelay: 500,
-            },
             spa: {
                 enabled: true,
             },
@@ -80,8 +35,7 @@ export default defineConfig(({ mode }) => ({
             },
         }),
         react(),
-        reactClickToComponent(),
         babel({ presets: [reactCompilerPreset()] }),
         tailwindcss(),
     ],
-}));
+});

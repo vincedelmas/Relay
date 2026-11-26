@@ -1,10 +1,16 @@
 import {clientEnv} from "@/env/client";
-import {logCsrfFailureServer} from "@/lib/server/core/csrf-logger.server";
+import {logger} from "@/lib/server/core/logger";
 import {createCsrfMiddleware, createServerOnlyFn} from "@tanstack/react-start";
 
 
 const logCsrfFailure = createServerOnlyFn((request: Request) => {
-    logCsrfFailureServer(request);
+    const requestUrl = new URL(request.url);
+    logger.warn({
+        method: request.method,
+        pathname: requestUrl.pathname,
+        origin: request.headers.get("Origin"),
+        host: request.headers.get("Host"),
+    }, "CSRF validation failed");
 });
 
 

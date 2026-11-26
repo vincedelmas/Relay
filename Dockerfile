@@ -2,8 +2,6 @@ ARG BUN_VERSION=1.4.4
 FROM oven/bun:${BUN_VERSION}-slim AS production-deps
 WORKDIR /app
 COPY package.json bun.lock ./
-# Avoid pulling optional framework peers into runtime
-# Prune musl variants whose package metadata does not declare their libc.
 RUN bun install --frozen-lockfile --production --omit=peer --libc=glibc \
     && rm -rf node_modules/lightningcss-linux-*-musl
 
@@ -26,7 +24,7 @@ RUN mkdir -p /tmp/build-db && \
 FROM oven/bun:${BUN_VERSION}-slim AS runtime
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libstdc++6 \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -34,13 +32,12 @@ ENV NODE_ENV=production \
 
 COPY --from=production-deps --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=build --chown=bun:bun /app/dist ./dist
-COPY --chown=bun:bun package.json bun.lock drizzle.config.ts tsconfig.json ./
+COPY --chown=bun:bun package.json bun.lock server.ts drizzle.config.ts tsconfig.json ./
 COPY --chown=bun:bun src ./src
-COPY --chown=bun:bun scripts/dk.ts ./scripts/dk.ts
 COPY --chown=bun:bun drizzle ./drizzle
 COPY --chown=bun:bun public ./public
-RUN mkdir -p /data/database /data/logs && chown -R bun:bun /data
+RUN mkdir -p /data/database && chown -R bun:bun /data
 USER bun
 EXPOSE 3000
 
-CMD ["bun", "dist/server.js"]
+CMD ["bun", "server.ts"]

@@ -12,10 +12,9 @@ import {installProcessErrorHandlers} from "@/lib/server/core/process-errors";
 installProcessErrorHandlers();
 
 
-const DIST_DIR = import.meta.dir;
 const PORT = Number(process.env.PORT ?? 3000);
-const CLIENT_DIR = path.resolve(DIST_DIR, "client");
-const SERVER_ENTRY = path.resolve(DIST_DIR, "server/server.js");
+const CLIENT_DIR = path.resolve(import.meta.dir, "dist/client");
+const SERVER_ENTRY = path.resolve(import.meta.dir, "dist/server/server.js");
 
 
 let isShuttingDown = false;
