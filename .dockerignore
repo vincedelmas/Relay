@@ -1,0 +1,22 @@
+# Git / IDE
+.git
+.github
+.idea
+
+# Dependencies / Build
+node_modules
+**/node_modules
+dist
+.tanstack
+coverage
+instance
+
+# Env / Secrets
+.env
+.env.*
+secrets/
+
+# Logs
+*.log
+logs/
+.DS_Store

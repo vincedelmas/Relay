@@ -1,0 +1,28 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "tags": [
+        "-lintignore"
+    ],
+    "entry": [
+        "server.ts",
+        "src/styles.css",
+        "src/routeTree.gen.ts",
+        "src/routes/**/*.{ts,tsx}"
+    ],
+    "project": [
+        "src/**/*.{ts,tsx,css}"
+    ],
+    "vite": {
+        "config": [
+            "vite.config.ts"
+        ]
+    },
+    "ignoreDependencies": [
+        "pino-pretty"
+    ],
+    "ignoreIssues": {
+        "src/lib/client/components/ui/**": [
+            "exports"
+        ]
+    }
+}

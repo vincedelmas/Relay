@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - CHANGELOG.md
+      - version.txt
+      - .release-please-manifest.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Static checks
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.head_ref != 'release-please--branches--main' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run routes:generate
+      - run: bun run lint
+      - run: bun run typecheck
+
+  tests:
+    name: Tests
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.head_ref != 'release-please--branches--main' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: /tmp/relay-unit-tests.db
+      BETTER_AUTH_SECRET: unit-test-auth-secret-for-ci
+      RELAY_ENCRYPTION_KEY: unit-test-encryption-key-for-ci
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run routes:generate
+      - run: bun run test
