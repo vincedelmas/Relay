@@ -361,7 +361,9 @@ export const syncProviderTools = async (providerId: string, options?: { signal?:
             }, options?.signal);
         }
 
-        const withJsNames = assignUniqueJsNames(fetchedTools);
+        const withJsNames = assignUniqueJsNames(
+            [...fetchedTools].sort((a, b) => a.name.localeCompare(b.name)),
+        );
         const now = new Date();
 
         const committed = db.transaction((tx) => {

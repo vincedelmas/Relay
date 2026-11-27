@@ -74,6 +74,8 @@ const withRemoteClient = async <T>(descriptor: RemoteProviderDescriptor, action:
             return await action(client);
         }
         finally {
+            await transport.terminateSession().catch(() => {
+            });
             await client.close().catch(() => {
             });
         }
