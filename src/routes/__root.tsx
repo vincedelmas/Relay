@@ -11,6 +11,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ssr: false,
     head: () => ({
         links: [
+            { rel: "preconnect", href: "https://fonts.googleapis.com" },
+            { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+            {
+                rel: "stylesheet",
+                href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap",
+            },
             { rel: "stylesheet", href: appCSS },
             { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
         ],
@@ -18,7 +24,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
             { charSet: "utf-8" },
             { title: "Relay — Personal MCP Gateway" },
             { name: "color-scheme", content: "dark" },
-            { name: "theme-color", content: "#0d0d0d" },
+            { name: "theme-color", content: "#0a0b0e" },
             { name: "viewport", content: "width=device-width, initial-scale=1" },
         ],
     }),
@@ -33,7 +39,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
             <head>
                 <HeadContent/>
             </head>
-            <body>
+            <body className="min-h-screen bg-background">
                 {children}
                 <Scripts/>
             </body>
@@ -45,7 +51,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
     return (
         <ClientOnly>
-            <TooltipProvider>
+            <TooltipProvider delay={180}>
                 <Outlet/>
             </TooltipProvider>
             {import.meta.env.DEV && <ReactQueryDevtools buttonPosition="bottom-left"/>}
