@@ -1,4 +1,5 @@
 import {mcp} from "@better-auth/mcp";
+import {cimd} from "@better-auth/cimd";
 import {clientEnv} from "@/env/client";
 import {serverEnv} from "@/env/server";
 import {jwt} from "better-auth/plugins";
@@ -10,6 +11,7 @@ import {createServerOnlyFn} from "@tanstack/react-start";
 import {drizzleAdapter} from "better-auth/adapters/drizzle";
 import {tanstackStartCookies} from "better-auth/tanstack-start";
 import {MCP_RESOURCE, MCP_SCOPES} from "@/lib/server/core/mcp/config";
+import {fetchClientMetadataResource} from "@/lib/server/core/cimd-fetch";
 
 
 const getAuthConfig = createServerOnlyFn(() => betterAuth({
@@ -41,9 +43,9 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
     emailAndPassword: {
         enabled: true,
         autoSignIn: true,
+        disableSignUp: true,
         minPasswordLength: 8,
         maxPasswordLength: 128,
-        disableSignUp: true,
     },
     advanced: {
         cookiePrefix: "relay",
@@ -52,8 +54,8 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
         jwt({ disableSettingJwtHeader: true }),
         mcp({
             scopes: MCP_SCOPES,
-            resource: MCP_RESOURCE,
             loginPage: "/login",
+            resource: MCP_RESOURCE,
             consentPage: "/oauth/consent",
             accessTokenExpiresIn: 15 * 60,
             allowPublicClientPrelogin: true,
@@ -61,6 +63,11 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
             allowUnauthenticatedClientRegistration: true,
             grantTypes: ["authorization_code", "refresh_token"],
             clientPrivileges: () => false,
+            customAccessTokenClaims: () => ({ relayIssuedAt: Date.now() }),
+        }),
+        cimd({
+            fetchClientMetadataResource,
+            metadataProfile: "mcp-2026-07-28",
         }),
         tanstackStartCookies(),
     ],

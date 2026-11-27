@@ -9,8 +9,8 @@ const usePrettyLogs = process.env.NODE_ENV !== "production"
 
 export const logger = pino({
     name: "relay",
-    level: process.env.NODE_ENV === "test" ? "silent" : "info",
     timestamp: pino.stdTimeFunctions.isoTime,
+    level: process.env.NODE_ENV === "test" ? "silent" : "info",
     transport: usePrettyLogs
         ? {
             target: "pino-pretty",
