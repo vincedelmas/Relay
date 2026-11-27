@@ -1,21 +1,19 @@
 import {db} from "@/lib/server/database/db";
-import {and, desc, eq, gt, sql} from "drizzle-orm";
+import {and, desc, eq, sql} from "drizzle-orm";
 import {MCP_RESOURCE} from "@/lib/server/core/mcp/config";
 import type {ClientGatewayMode, McpClientAccess} from "@/lib/types/gateway.types";
-import {clientPolicy, oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken, session, user, verification} from "@/lib/server/database/schema";
+import {clientPolicy, oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken, user, verification} from "@/lib/server/database/schema";
 
 
 // Signature, issuer, audience and expiry are verified by @better-auth/mcp first.
 export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): McpClientAccess | null => {
     const userId = accessTokenClaims.sub;
-    const sessionId = accessTokenClaims.sid;
     const clientId = accessTokenClaims.client_id;
     const issuedAt = accessTokenClaims.relayIssuedAt;
 
     if (
         typeof userId !== "string" || !userId
         || typeof clientId !== "string" || !clientId
-        || typeof sessionId !== "string" || !sessionId
         || typeof issuedAt !== "number"
     ) {
         return null;
@@ -33,11 +31,7 @@ export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): 
         }).from(oauthConsent)
         .innerJoin(oauthClient, eq(oauthClient.clientId, oauthConsent.clientId))
         .innerJoin(user, eq(user.id, oauthConsent.userId))
-        .innerJoin(session, and(
-            eq(session.id, sessionId),
-            gt(session.expiresAt, new Date()),
-            eq(session.userId, oauthConsent.userId),
-        )).leftJoin(clientPolicy, eq(clientPolicy.clientId, oauthConsent.clientId))
+        .leftJoin(clientPolicy, eq(clientPolicy.clientId, oauthConsent.clientId))
         .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)))
         .get();
 
