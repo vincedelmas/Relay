@@ -7,7 +7,7 @@ import type {GatewayPolicyContext, McpClientAccess} from "@/lib/types/gateway.ty
 import {MCP_ACCESS_SCOPE, MCP_RESOURCE, MCP_SCOPES} from "@/lib/server/core/mcp/config";
 import {CallToolRequestSchema, ListToolsRequestSchema} from "@modelcontextprotocol/sdk/types.js";
 import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import {describePermittedTools, executeCodeModeScript, invokePermittedTool, listPermittedClassicTools, searchPermittedTools} from "@/lib/server/domain/providers/provider.service";
+import {describePermittedTools, ensureFreshProviderTools, executeCodeModeScript, invokePermittedTool, listPermittedClassicTools, searchPermittedTools} from "@/lib/server/domain/providers/provider.service";
 
 
 const unauthorizedJsonRpc = (message: string) => new Response(JSON.stringify({
@@ -43,6 +43,7 @@ const configureCodeModeServer = (server: McpServer, policy: GatewayPolicyContext
                 .describe("Max results to return (default 15)."),
         },
     }, async ({ query, provider: providerSlug, limit }) => {
+        await ensureFreshProviderTools(policy, providerSlug);
         const result = searchPermittedTools(policy, { query, providerSlug, limit });
 
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2), }] };
@@ -130,6 +131,7 @@ const configureClassicModeServer = (server: McpServer, policy: GatewayPolicyCont
     server.server.registerCapabilities({ tools: {} });
 
     server.server.setRequestHandler(ListToolsRequestSchema, async () => {
+        await ensureFreshProviderTools(policy);
         const tools = listPermittedClassicTools(policy);
         return {
             tools: tools.map((tool) => ({

@@ -14,6 +14,14 @@ import {clearUpstreamOAuthState, hasStoredUpstreamTokens} from "@/lib/server/dom
 import type {GatewayPolicyContext, InvokedToolResponse, ProviderAuthType, ProviderKind, ToolDescriptionEntry, ToolSearchHit} from "@/lib/types/gateway.types";
 
 
+const AUTO_SYNC_TTL_MS = 5 * 60 * 1000;
+const AUTO_SYNC_TIMEOUT_MS = 5_000;
+const PROCESS_STARTED_AT = Date.now();
+
+const inFlightSyncs = new Map<string, Promise<void>>();
+const lastAutoSyncAttemptAt = new Map<string, number>();
+
+
 const sanitizeFtsQuery = (raw: string): string | null => {
     const tokens = raw
         .trim()
@@ -249,10 +257,13 @@ export const updateProvider = async (input: {
         .set(patch)
         .where(eq(provider.id, input.id))
         .run();
+
+    lastAutoSyncAttemptAt.delete(input.id);
 };
 
 
 export const deleteProvider = (providerId: string) => {
+    lastAutoSyncAttemptAt.delete(providerId);
     db.transaction((tx) => {
         const toolIds = tx.select({ id: providerTool.id })
             .from(providerTool)
@@ -272,6 +283,7 @@ export const deleteProvider = (providerId: string) => {
 
 
 export const disconnectProviderOAuth = (providerId: string) => {
+    lastAutoSyncAttemptAt.delete(providerId);
     clearUpstreamOAuthState(providerId);
     db.update(provider)
         .set({ lastError: null, updatedAt: new Date() })
@@ -288,7 +300,7 @@ export const toggleProviderTool = (toolId: string, enabled: boolean) => {
 };
 
 
-export const syncProviderTools = async (providerId: string): Promise<{ toolCount: number }> => {
+export const syncProviderTools = async (providerId: string, options?: { signal?: AbortSignal }): Promise<{ toolCount: number }> => {
     const row = db.select().from(provider).where(eq(provider.id, providerId)).get();
     if (!row) throw new Error("Provider not found.");
 
@@ -324,7 +336,7 @@ export const syncProviderTools = async (providerId: string): Promise<{ toolCount
                 url: row.url,
                 authType: row.authType,
                 encryptedAuthSecret: row.encryptedAuthSecret,
-            });
+            }, options?.signal);
         }
 
         const withJsNames = assignUniqueJsNames(fetchedTools);
@@ -393,6 +405,59 @@ const getPermittedProviders = (policy: GatewayPolicyContext) => {
 
     const allowed = new Set(policy.allowedProviderIds);
     return enabledProviders.filter((p) => allowed.has(p.id));
+};
+
+
+export const ensureFreshProviderTools = async (policy: GatewayPolicyContext, providerSlug?: string): Promise<void> => {
+    let providers = getPermittedProviders(policy);
+    if (providerSlug?.trim()) {
+        const target = toProviderSlug(providerSlug);
+        providers = providers.filter((p) => p.slug === target);
+    }
+
+    const now = Date.now();
+    const tasks: Array<Promise<void>> = [];
+
+    for (const p of providers) {
+        const existingSync = inFlightSyncs.get(p.id);
+        if (existingSync) {
+            tasks.push(existingSync);
+            continue;
+        }
+
+        if (p.kind === "remote_mcp") {
+            if (!p.url) continue;
+            if (p.authType === "oauth" && !hasStoredUpstreamTokens(p.id)) continue;
+            if (p.authType === "bearer" && !p.encryptedAuthSecret) continue;
+        }
+
+        const lastSyncedMs = p.lastSyncedAt?.getTime() ?? 0;
+        const isStale = p.kind === "builtin"
+            ? lastSyncedMs < PROCESS_STARTED_AT
+            : now - lastSyncedMs >= AUTO_SYNC_TTL_MS;
+
+        if (!isStale) continue;
+
+        const lastAttemptMs = lastAutoSyncAttemptAt.get(p.id) ?? 0;
+        if (now - lastAttemptMs < AUTO_SYNC_TTL_MS) continue;
+
+        lastAutoSyncAttemptAt.set(p.id, now);
+        const task = syncProviderTools(p.id, { signal: AbortSignal.timeout(AUTO_SYNC_TIMEOUT_MS) })
+            .then(() => undefined)
+            .catch((err: unknown) => {
+                logger.warn({ err, providerId: p.id, provider: p.slug }, "Auto-sync failed; serving cached tools");
+            })
+            .finally(() => {
+                inFlightSyncs.delete(p.id);
+            });
+
+        inFlightSyncs.set(p.id, task);
+        tasks.push(task);
+    }
+
+    if (tasks.length > 0) {
+        await Promise.all(tasks);
+    }
 };
 
 

@@ -12,6 +12,7 @@ import {
     deleteProvider,
     describePermittedTools,
     disconnectProviderOAuth,
+    ensureFreshProviderTools,
     executeCodeModeScript,
     invokePermittedTool,
     listProvidersWithSummary,
@@ -185,11 +186,10 @@ export const playgroundSearchFn = createServerFn({ method: "POST" })
         providerSlug: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional(),
     }))
-    .handler(({ data }) => {
-        return searchPermittedTools(
-            { allowedProviderIds: null, readOnly: false },
-            data,
-        );
+    .handler(async ({ data }) => {
+        const policy = { allowedProviderIds: null, readOnly: false };
+        await ensureFreshProviderTools(policy, data.providerSlug);
+        return searchPermittedTools(policy, data);
     });
 
 
