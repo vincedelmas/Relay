@@ -1,5 +1,5 @@
-import {and, eq} from "drizzle-orm";
 import crypto from "node:crypto";
+import {and, eq} from "drizzle-orm";
 import {clientEnv} from "@/env/client";
 import {db} from "@/lib/server/database/db";
 import {logger} from "@/lib/server/core/logger";
@@ -7,12 +7,19 @@ import {provider, providerOauthState} from "@/lib/server/database/schema";
 import type {FetchLike} from "@modelcontextprotocol/sdk/shared/transport.js";
 import {decryptJson, decryptSecret, encryptJson, encryptSecret} from "@/lib/server/core/crypto";
 import type {OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens} from "@modelcontextprotocol/sdk/shared/auth.js";
-import {auth as mcpClientAuth, discoverOAuthServerInfo, type OAuthClientProvider, type OAuthDiscoveryState, refreshAuthorization} from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+    auth as mcpClientAuth,
+    discoverOAuthServerInfo,
+    extractWWWAuthenticateParams,
+    type OAuthClientProvider,
+    type OAuthDiscoveryState,
+    refreshAuthorization,
+} from "@modelcontextprotocol/sdk/client/auth.js";
 
 
 const REFRESH_LEEWAY_MS = 60 * 1000;
-const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const OAUTH_REFRESH_TIMEOUT_MS = 10_000;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const UPSTREAM_OAUTH_CALLBACK_URL = new URL("/api/providers/oauth/callback", clientEnv.VITE_BASE_URL).href;
 
 
@@ -39,7 +46,11 @@ const disconnectGenerations = new Map<string, number>();
 
 const createTimeoutFetch = (timeoutMs: number): FetchLike => (input, init) => {
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+
+    const signal = init?.signal
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
+
     return fetch(input, { ...init, signal });
 };
 
@@ -53,16 +64,14 @@ const awaitWithSignal = <T>(promise: Promise<T>, signal?: AbortSignal): Promise<
     return new Promise<T>((resolve, reject) => {
         const onAbort = () => reject(signal.reason instanceof Error ? signal.reason : new Error("Request aborted"));
         signal.addEventListener("abort", onAbort, { once: true });
-        promise.then(
-            (val) => {
-                signal.removeEventListener("abort", onAbort);
-                resolve(val);
-            },
-            (err) => {
-                signal.removeEventListener("abort", onAbort);
-                reject(err);
-            },
-        );
+
+        promise.then((val) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(val);
+        }, (err) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(err);
+        });
     });
 };
 
@@ -324,6 +333,7 @@ export const ensureFreshUpstreamTokens = async (
         }
         catch (err) {
             if (err instanceof UpstreamReauthRequiredError) throw err;
+
             logger.warn({ err, providerId: providerRow.id }, "Upstream OAuth token refresh failed");
             throw new UpstreamReauthRequiredError(providerRow.name, "token refresh failed");
         }
@@ -335,18 +345,57 @@ export const ensureFreshUpstreamTokens = async (
     // Prevent unhandled rejection if caller aborts while shared refresh completes in background
     void refreshPromise.catch(() => undefined);
     refreshLocks.set(providerRow.id, refreshPromise);
+
     await awaitWithSignal(refreshPromise, options?.signal);
 };
 
 
 export const startUpstreamOAuthFlow = async (providerId: string): Promise<{ authorizationUrl?: string; alreadyAuthorized: boolean }> => {
-    const row = db.select().from(provider).where(eq(provider.id, providerId)).get();
+    const row = db
+        .select()
+        .from(provider)
+        .where(eq(provider.id, providerId))
+        .get();
+
     if (!row || row.kind !== "remote_mcp" || !row.url) {
         throw new Error("Remote MCP provider not found.");
     }
 
+    let scope: string | undefined;
+    let resourceMetadataUrl: URL | undefined;
+    const fetchFn = createTimeoutFetch(OAUTH_REFRESH_TIMEOUT_MS);
+
+    try {
+        const probeRes = await fetchFn(row.url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+            body: JSON.stringify({
+                id: 1,
+                jsonrpc: "2.0",
+                method: "initialize",
+                params: {
+                    capabilities: {},
+                    protocolVersion: "2025-03-26",
+                    clientInfo: { name: "relay-gateway", version: "0.1.0" },
+                },
+            }),
+        });
+
+        if (probeRes.status === 401) {
+            ({ resourceMetadataUrl, scope } = extractWWWAuthenticateParams(probeRes));
+        }
+
+        await probeRes.body?.cancel().catch(() => undefined);
+    }
+    catch (err) {
+        logger.debug({ err, providerId: row.id }, "Upstream MCP challenge probe failed; falling back to default OAuth discovery");
+    }
+
     const oauthProvider = new RelayUpstreamOAuthProvider(row.id, row.name, true);
-    const result = await mcpClientAuth(oauthProvider, { serverUrl: row.url });
+    const result = await mcpClientAuth(oauthProvider, { scope, fetchFn, serverUrl: row.url, resourceMetadataUrl });
 
     if (result === "AUTHORIZED") {
         return { alreadyAuthorized: true };
@@ -364,21 +413,28 @@ export const startUpstreamOAuthFlow = async (providerId: string): Promise<{ auth
 
 
 export const finishUpstreamOAuthCallback = async (state: string, code: string): Promise<{ providerId: string; slug: string }> => {
-    const stateRow = db.select().from(providerOauthState).where(eq(providerOauthState.oauthState, state)).get();
+    const stateRow = db
+        .select()
+        .from(providerOauthState)
+        .where(eq(providerOauthState.oauthState, state))
+        .get();
+
     if (!stateRow || !stateRow.oauthStateExpiresAt || stateRow.oauthStateExpiresAt.getTime() < Date.now()) {
         throw new Error("Invalid or expired OAuth state parameter.");
     }
 
-    const row = db.select().from(provider).where(eq(provider.id, stateRow.providerId)).get();
+    const row = db
+        .select()
+        .from(provider)
+        .where(eq(provider.id, stateRow.providerId))
+        .get();
+
     if (!row || !row.url) {
         throw new Error("Associated provider no longer exists.");
     }
 
     const oauthProvider = new RelayUpstreamOAuthProvider(row.id, row.name, false);
-    const result = await mcpClientAuth(oauthProvider, {
-        serverUrl: row.url,
-        authorizationCode: code,
-    });
+    const result = await mcpClientAuth(oauthProvider, { serverUrl: row.url, authorizationCode: code });
 
     if (result !== "AUTHORIZED") {
         throw new Error("Upstream OAuth token exchange did not complete.");
