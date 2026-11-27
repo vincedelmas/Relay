@@ -102,8 +102,7 @@ function DashboardPage() {
     const errorProviders = data.providers.filter((p) => Boolean(p.lastError)).length;
     const totalTools = data.providers.reduce((sum, p) => sum + p.toolCount, 0);
     const enabledTools = data.providers.reduce((sum, p) => sum + (p.enabled ? p.enabledToolCount : 0), 0);
-    const codeModeClients = data.clients.filter((c) => c.mode === "code").length;
-    const classicClients = data.clients.length - codeModeClients;
+    const readOnlyClients = data.clients.filter((c) => c.readOnly).length;
     const errorLogs = data.logs.filter((l) => l.status === "error").length;
     const avgDurationMs = data.logs.length > 0
         ? Math.round(data.logs.reduce((sum, l) => sum + l.durationMs, 0) / data.logs.length)
@@ -298,7 +297,9 @@ function DashboardPage() {
                             </span>
                             <span className="truncate text-xs text-muted-foreground tabular-nums">
                                 {data.clients.length > 0
-                                    ? `${codeModeClients} code · ${classicClients} classic`
+                                    ? readOnlyClients > 0
+                                        ? `${readOnlyClients} read-only`
+                                        : "OAuth 2.1 active"
                                     : "OAuth 2.1 ready"}
                             </span>
                         </div>
@@ -395,6 +396,7 @@ function DashboardPage() {
                     <TabsContent value="playground">
                         <PlaygroundTab
                             key={playgroundSeed.key}
+                            providers={data.providers}
                             initialMode={playgroundSeed.mode}
                             initialToolId={playgroundSeed.toolId}
                             initialScriptCode={playgroundSeed.scriptCode}

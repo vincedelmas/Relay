@@ -12,7 +12,7 @@ const DEFAULT_LIMITS: Required<QuickJsSandboxLimits> = {
     maxLogsBytes: 32 * 1024,
     maxResultBytes: 64 * 1024,
     maxStackSizeBytes: 512 * 1024,
-    maxToolResponseBytes: 256 * 1024,
+    maxToolResponseBytes: 2 * 1024 * 1024,
     memoryLimitBytes: 32 * 1024 * 1024,
 };
 
@@ -251,8 +251,7 @@ export const runQuickJsSandbox = async (options: QuickJsSandboxOptions): Promise
                     const byteLength = Buffer.byteLength(serialized, "utf8");
                     if (byteLength > limits.maxToolResponseBytes) {
                         settleWithError(
-                            `Tool ${providerSlug}.${jsName} response (${byteLength} bytes) 
-                            exceeded sandbox limit (${limits.maxToolResponseBytes} bytes). Narrow your query or limit.`,
+                            `Tool ${providerSlug}.${jsName} response (${byteLength} bytes) exceeded sandbox limit (${limits.maxToolResponseBytes} bytes). Narrow your query or limit.`,
                         );
                         return;
                     }
@@ -332,8 +331,7 @@ export const runQuickJsSandbox = async (options: QuickJsSandboxOptions): Promise
 
         const outputBytes = Buffer.byteLength(serializedOutput, "utf8");
         if (outputBytes > limits.maxResultBytes) {
-            throw new Error(`Script return value (${outputBytes} bytes) exceeded maximum result limit 
-            (${limits.maxResultBytes} bytes). Return a smaller summary.`);
+            throw new Error(`Script return value (${outputBytes} bytes) exceeded maximum result limit (${limits.maxResultBytes} bytes). Return a smaller summary.`);
         }
 
         const parsedResult: unknown = serializedOutput === "undefined" ? null : JSON.parse(serializedOutput);

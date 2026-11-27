@@ -71,7 +71,7 @@ function LoginPage() {
                             Sign in to Relay
                         </CardTitle>
                         <CardDescription className="max-w-xs text-balance text-sm">
-                            Your personal MCP gateway with OAuth 2.1, per-client policies, and QuickJS Code Mode.
+                            Your personal MCP gateway with OAuth 2.1, per-client policies, and a QuickJS execution sandbox.
                         </CardDescription>
                     </CardHeader>
 

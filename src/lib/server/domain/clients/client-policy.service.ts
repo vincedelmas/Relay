@@ -1,7 +1,7 @@
 import {db} from "@/lib/server/database/db";
 import {and, desc, eq, sql} from "drizzle-orm";
 import {MCP_RESOURCE} from "@/lib/server/core/mcp/config";
-import type {ClientGatewayMode, McpClientAccess} from "@/lib/types/gateway.types";
+import type {McpClientAccess} from "@/lib/types/gateway.types";
 import {clientPolicy, oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken, user, verification} from "@/lib/server/database/schema";
 
 
@@ -21,7 +21,6 @@ export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): 
 
     const grant = db
         .select({
-            mode: clientPolicy.mode,
             clientName: oauthClient.name,
             disabled: oauthClient.disabled,
             readOnly: clientPolicy.readOnly,
@@ -47,7 +46,6 @@ export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): 
     return {
         userId,
         clientId,
-        mode: grant.mode ?? "code",
         readOnly: grant.readOnly ?? false,
         clientName: grant.clientName || "Unnamed client",
         allowedProviderIds: grant.allowedProviderIds ?? [],
@@ -57,7 +55,6 @@ export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): 
 
 export const saveClientPolicy = (input: {
     clientId: string;
-    mode?: ClientGatewayMode;
     readOnly?: boolean;
     allowedProviderIds?: string[];
     toggleProvider?: { providerId: string; allowed: boolean };
@@ -70,7 +67,6 @@ export const saveClientPolicy = (input: {
             .where(eq(clientPolicy.clientId, input.clientId))
             .get();
 
-        const mode = input.mode ?? existing?.mode ?? "code";
         const readOnly = input.readOnly ?? existing?.readOnly ?? false;
         let allowedProviderIds = input.allowedProviderIds !== undefined
             ? Array.from(new Set(input.allowedProviderIds))
@@ -85,7 +81,6 @@ export const saveClientPolicy = (input: {
 
         tx.insert(clientPolicy)
             .values({
-                mode,
                 readOnly,
                 updatedAt: now,
                 allowedProviderIds,
@@ -93,7 +88,6 @@ export const saveClientPolicy = (input: {
             }).onConflictDoUpdate({
             target: clientPolicy.clientId,
             set: {
-                mode,
                 readOnly,
                 updatedAt: now,
                 allowedProviderIds,
@@ -108,7 +102,6 @@ export const listConnectedClients = (userId: string) => {
         .select({
             uri: oauthClient.uri,
             name: oauthClient.name,
-            mode: clientPolicy.mode,
             scopes: oauthConsent.scopes,
             clientId: oauthConsent.clientId,
             readOnly: clientPolicy.readOnly,
@@ -128,7 +121,6 @@ export const listConnectedClients = (userId: string) => {
         createdAt: row.createdAt,
         readOnly: row.readOnly ?? false,
         name: row.name || "Unnamed client",
-        mode: row.mode ?? ("code" as ClientGatewayMode),
         allowedProviderIds: row.allowedProviderIds ?? [],
     }));
 };
@@ -143,7 +135,6 @@ export const revokeClientConnection = (userId: string, clientId: string) => {
             .values({
                 clientId,
                 revokedAt,
-                mode: "code",
                 updatedAt: now,
                 readOnly: true,
                 allowedProviderIds: [],

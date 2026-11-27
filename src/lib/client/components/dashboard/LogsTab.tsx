@@ -161,7 +161,7 @@ export function LogsTab({ logs, onReplayScript }: LogsTabProps) {
                         <div className="max-w-md space-y-1">
                             <p className="text-base font-semibold tracking-tight">No executions recorded yet</p>
                             <p className="text-sm text-muted-foreground">
-                                Tool calls and Code Mode script executions will appear here with latency, client attribution, and error details.
+                                Tool calls and QuickJS script executions will appear here with latency, client attribution, and error details.
                             </p>
                         </div>
                     </CardContent>

@@ -1,7 +1,7 @@
 import {authClient} from "@/lib/client/auth-client";
 import {useMutation, useQueryClient} from "@tanstack/react-query";
 import {gatewayStateOptions} from "@/lib/client/react-query/query-options/gateway.options";
-import type {ClientGatewayMode, ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
+import type {ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
 import {
     clearLogsFn,
     createProviderFn,
@@ -9,9 +9,7 @@ import {
     disconnectClientFn,
     disconnectProviderOAuthFn,
     playgroundCallFn,
-    playgroundDescribeFn,
     playgroundExecuteFn,
-    playgroundSearchFn,
     saveClientPolicyFn,
     startProviderOAuthFn,
     syncProviderFn,
@@ -130,7 +128,6 @@ export const useSaveClientPolicyMutation = () => {
     return useMutation({
         mutationFn: (data: {
             clientId: string;
-            mode?: ClientGatewayMode;
             readOnly?: boolean;
             allowedProviderIds?: string[];
             toggleProvider?: { providerId: string; allowed: boolean };
@@ -153,7 +150,6 @@ export const useDisconnectClientMutation = () => {
 export const useOAuthConsentMutation = (params: {
     clientId: string;
     oauthQuery: string;
-    mode: ClientGatewayMode;
     readOnly: boolean;
     allowedProviderIds: string[];
 }) => {
@@ -163,7 +159,6 @@ export const useOAuthConsentMutation = (params: {
                 await saveClientPolicyFn({
                     data: {
                         clientId: params.clientId,
-                        mode: params.mode,
                         readOnly: params.readOnly,
                         allowedProviderIds: params.allowedProviderIds,
                     },
@@ -180,20 +175,6 @@ export const useOAuthConsentMutation = (params: {
         onSuccess: (data) => {
             window.location.assign(data.url);
         },
-    });
-};
-
-
-export const usePlaygroundSearchMutation = () => {
-    return useMutation({
-        mutationFn: (query: string) => playgroundSearchFn({ data: { query: query || "*", limit: 20 } }),
-    });
-};
-
-
-export const usePlaygroundDescribeMutation = () => {
-    return useMutation({
-        mutationFn: (toolId: string) => playgroundDescribeFn({ data: { tools: [toolId] } }),
     });
 };
 

@@ -6,13 +6,11 @@ import {Button} from "@/lib/client/components/ui/button";
 import {Switch} from "@/lib/client/components/ui/switch";
 import {Checkbox} from "@/lib/client/components/ui/checkbox";
 import {RelayMark} from "@/lib/client/components/RelayLogo";
-import {Separator} from "@/lib/client/components/ui/separator";
-import type {ClientGatewayMode} from "@/lib/types/gateway.types";
 import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {oauthConsentRequestOptions} from "@/lib/client/react-query/query-options/gateway.options";
 import {useOAuthConsentMutation} from "@/lib/client/react-query/query-mutations/gateway.mutations";
 import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/lib/client/components/ui/card";
-import {AlertCircle, ArrowLeftRight, Bot, Check, Code2, Globe, Layers, Lock, ShieldCheck} from "lucide-react";
+import {AlertCircle, ArrowLeftRight, Bot, Globe, Lock, ShieldCheck} from "lucide-react";
 
 
 export const Route = createFileRoute("/oauth/consent")({
@@ -27,7 +25,7 @@ export const Route = createFileRoute("/oauth/consent")({
     pendingComponent: () => (
         <div className="relay-ambient relative flex min-h-screen items-center justify-center bg-background px-4 py-12">
             <div className="relay-grid pointer-events-none fixed inset-x-0 top-0 h-96"/>
-            <div className="h-[460px] w-full max-w-lg animate-pulse rounded-2xl border border-border/60 bg-card/60"/>
+            <div className="h-[420px] w-full max-w-lg animate-pulse rounded-2xl border border-border/60 bg-card/60"/>
         </div>
     ),
     component: OAuthConsentPage,
@@ -38,9 +36,8 @@ export const Route = createFileRoute("/oauth/consent")({
 function OAuthConsentPage() {
     const { oauthQuery, request } = Route.useLoaderData();
     const [readOnly, setReadOnly] = useState(false);
-    const [mode, setMode] = useState<ClientGatewayMode>("code");
     const [selectedProviders, setSelectedProviders] = useState<string[]>(() => request.providers.map((p) => p.id));
-    const mutation = useOAuthConsentMutation({ mode, readOnly, oauthQuery, clientId: request.clientId, allowedProviderIds: selectedProviders });
+    const mutation = useOAuthConsentMutation({ readOnly, oauthQuery, clientId: request.clientId, allowedProviderIds: selectedProviders });
 
     const toggleProvider = (providerId: string, checked: boolean) => {
         setSelectedProviders((prev) =>
@@ -75,7 +72,7 @@ function OAuthConsentPage() {
                             Connect {request.name} to Relay?
                         </CardTitle>
                         <CardDescription className="text-balance text-xs sm:text-sm">
-                            Choose the execution mode and tool providers this AI client can access.
+                            Choose which tool providers this AI client can access through your gateway.
                         </CardDescription>
 
                         <div className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/30 px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -91,69 +88,6 @@ function OAuthConsentPage() {
                                 <AlertDescription>{mutation.error.message}</AlertDescription>
                             </Alert>
                         )}
-
-                        <div className="flex flex-col gap-2">
-                            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                                Gateway Mode
-                            </span>
-                            <div className="grid grid-cols-2 gap-2.5">
-                                <button
-                                    type="button"
-                                    disabled={mutation.isPending}
-                                    onClick={() => setMode("code")}
-                                    className={cn(
-                                        "relative flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-all",
-                                        mode === "code"
-                                            ? "border-brand/50 bg-brand/10 text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
-                                            : "border-border/80 bg-black/20 text-muted-foreground hover:border-foreground/20 hover:bg-black/30",
-                                    )}
-                                >
-                                    <div className="flex w-full items-center justify-between gap-2">
-                                        <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                                            <Code2 className="size-4 text-brand"/>
-                                            Code Mode
-                                        </span>
-                                        {mode === "code" && (
-                                            <span className="flex size-4 items-center justify-center rounded-full bg-brand text-primary-foreground">
-                                                <Check className="size-2.5 stroke-[3]"/>
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className="text-xs leading-snug text-muted-foreground">
-                                        4 meta-tools + QuickJS sandbox
-                                    </span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    disabled={mutation.isPending}
-                                    onClick={() => setMode("classic")}
-                                    className={cn(
-                                        "relative flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-all",
-                                        mode === "classic"
-                                            ? "border-info/50 bg-info/10 text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
-                                            : "border-border/80 bg-black/20 text-muted-foreground hover:border-foreground/20 hover:bg-black/30",
-                                    )}
-                                >
-                                    <div className="flex w-full items-center justify-between gap-2">
-                                        <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                                            <Layers className="size-4 text-info"/>
-                                            Classic MCP
-                                        </span>
-                                        {mode === "classic" && (
-                                            <span className="flex size-4 items-center justify-center rounded-full bg-info text-info-foreground">
-                                                <Check className="size-2.5 stroke-[3]"/>
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className="text-xs leading-snug text-muted-foreground">
-                                        Expose allowed tools directly
-                                    </span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <Separator className="bg-border/60"/>
 
                         <div className="flex flex-col gap-2.5">
                             <div className="flex items-center justify-between gap-2">
@@ -258,7 +192,7 @@ function OAuthConsentPage() {
                         <Alert className="border-white/[0.07] bg-black/25">
                             <ShieldCheck className="size-4 text-brand"/>
                             <AlertDescription className="text-xs">
-                                Permissions are enforced on both discovery and execution, and can be changed or revoked anytime from your Relay dashboard.
+                                Permissions are enforced on both tool listing and execution (including QuickJS scripts), and can be changed or revoked anytime from your Relay dashboard.
                                 {request.scopes.includes("offline_access") && " This client may stay connected between sessions."}
                             </AlertDescription>
                         </Alert>

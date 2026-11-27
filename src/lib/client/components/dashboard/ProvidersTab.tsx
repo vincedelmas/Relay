@@ -48,7 +48,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     { label: "MyLists", kind: "remote_mcp", name: "MyLists", slug: "mylists", url: "https://mylists.info/api/mcp", authType: "oauth" },
     { label: "Famiglia", kind: "remote_mcp", name: "Famiglia Recipes", slug: "famiglia", url: "https://famiglia-recipes.mylists.info/api/mcp", authType: "oauth" },
     { label: "PostHog", kind: "remote_mcp", name: "PostHog", slug: "posthog", url: "https://mcp.posthog.com/mcp", authType: "oauth" },
-    { label: "Cloudflare", kind: "remote_mcp", name: "Cloudflare", slug: "cloudflare", url: "https://observability.mcp.cloudflare.com/mcp", authType: "oauth" },
+    { label: "Cloudflare", kind: "remote_mcp", name: "Cloudflare", slug: "cloudflare", url: "https://mcp.cloudflare.com/mcp", authType: "oauth" },
 ];
 
 
@@ -761,7 +761,7 @@ function AddProviderDialog({ open, builtins, initialPreset, onOpenChange }: AddP
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="provider-slug" className="text-xs">Code Mode Namespace</Label>
+                            <Label htmlFor="provider-slug" className="text-xs">Tool Namespace</Label>
                             <Input
                                 id="provider-slug"
                                 value={slug}

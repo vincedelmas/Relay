@@ -2,7 +2,6 @@ import type {getGatewayState} from "@/lib/server/functions/gateway";
 import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js";
 
 
-export type ClientGatewayMode = "code" | "classic";
 export type ProviderKind = "remote_mcp" | "builtin";
 export type ProviderAuthType = "none" | "oauth" | "bearer";
 
@@ -88,34 +87,6 @@ export interface GatewayPolicyContext {
 }
 
 
-export interface ToolSearchHit {
-    id: string;
-    providerSlug: string;
-    providerName: string;
-    toolName: string;
-    jsName: string;
-    jsCall: string;
-    title: string | null;
-    description: string;
-    readOnly: boolean;
-    destructive: boolean;
-}
-
-
-export interface ToolDescriptionEntry {
-    id: string;
-    providerSlug: string;
-    toolName: string;
-    jsName: string;
-    title: string | null;
-    description: string;
-    readOnly: boolean;
-    destructive: boolean;
-    signature: string;
-    inputSchema: Record<string, unknown>;
-}
-
-
 export interface InvokedToolResponse {
     data: unknown;
     content: CallToolResult["content"];
@@ -128,7 +99,6 @@ export interface McpClientAccess {
     userId: string;
     clientId: string;
     clientName: string;
-    mode: ClientGatewayMode;
     readOnly: boolean;
     allowedProviderIds: string[];
 }

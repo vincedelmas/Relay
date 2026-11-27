@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {db} from "@/lib/server/database/db";
 import {logger} from "@/lib/server/core/logger";
-import {and, asc, eq, inArray, sql} from "drizzle-orm";
+import {and, asc, eq, inArray} from "drizzle-orm";
 import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js";
 import {runQuickJsSandbox} from "@/lib/server/core/sandbox/quickjs";
 import {provider, providerTool} from "@/lib/server/database/schema";
@@ -9,10 +9,9 @@ import {getBuiltInProvider} from "@/lib/server/domain/providers/builtins";
 import {assignUniqueJsNames, toProviderSlug} from "@/lib/utils/identifiers";
 import {decryptJson, encryptJson, encryptSecret} from "@/lib/server/core/crypto";
 import {recordExecutionLog} from "@/lib/server/domain/logs/execution-log.service";
-import {extractSchemaSearchTerms, renderToolSignature} from "@/lib/utils/json-schema-ts";
 import {callRemoteMcpTool, listRemoteMcpTools} from "@/lib/server/domain/providers/remote-mcp";
 import {clearUpstreamOAuthState, hasStoredUpstreamTokens} from "@/lib/server/domain/providers/upstream-oauth";
-import type {GatewayPolicyContext, InvokedToolResponse, ProviderAuthType, ProviderKind, ToolDescriptionEntry, ToolSearchHit} from "@/lib/types/gateway.types";
+import type {GatewayPolicyContext, InvokedToolResponse, ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
 
 
 const AUTO_SYNC_TTL_MS = 5 * 60 * 1000;
@@ -21,19 +20,6 @@ const PROCESS_STARTED_AT = Date.now();
 
 const inFlightSyncs = new Map<string, Promise<void>>();
 const lastAutoSyncAttemptAt = new Map<string, number>();
-
-
-const sanitizeFtsQuery = (raw: string): string | null => {
-    const tokens = raw
-        .trim()
-        .replace(/[^a-zA-Z0-9_]+/g, " ")
-        .split(/\s+/)
-        .filter((t) => t.length > 0)
-        .slice(0, 12);
-
-    if (tokens.length === 0) return null;
-    return tokens.map((token) => `"${token}"*`).join(" OR ");
-};
 
 
 const formatContentText = (content: CallToolResult["content"]): string => {
@@ -136,6 +122,7 @@ export const listProvidersWithSummary = () => {
                 readOnly: t.readOnly,
                 description: t.description,
                 destructive: t.destructive,
+                inputSchemaJson: JSON.stringify(t.inputSchema, null, 2),
             })),
         };
     });
@@ -282,16 +269,6 @@ export const updateProvider = async (input: {
 
     db.transaction((tx) => {
         if (urlChanged) {
-            const toolIds = tx.select({ id: providerTool.id })
-                .from(providerTool)
-                .where(eq(providerTool.providerId, input.id))
-                .all()
-                .map((t) => t.id);
-
-            for (const toolId of toolIds) {
-                tx.run(sql`DELETE FROM provider_tool_fts WHERE tool_id = ${toolId}`);
-            }
-
             tx.delete(providerTool)
                 .where(eq(providerTool.providerId, input.id))
                 .run();
@@ -313,21 +290,9 @@ export const updateProvider = async (input: {
 
 export const deleteProvider = (providerId: string) => {
     lastAutoSyncAttemptAt.delete(providerId);
-    db.transaction((tx) => {
-        const toolIds = tx.select({ id: providerTool.id })
-            .from(providerTool)
-            .where(eq(providerTool.providerId, providerId))
-            .all()
-            .map((t) => t.id);
-
-        for (const toolId of toolIds) {
-            tx.run(sql`DELETE FROM provider_tool_fts WHERE tool_id = ${toolId}`);
-        }
-
-        tx.delete(provider)
-            .where(eq(provider.id, providerId))
-            .run();
-    });
+    db.delete(provider)
+        .where(eq(provider.id, providerId))
+        .run();
 };
 
 
@@ -393,22 +358,17 @@ export const syncProviderTools = async (providerId: string, options?: { signal?:
 
         db.transaction((tx) => {
             const existingTools = tx.select({
-                id: providerTool.id,
                 name: providerTool.name,
                 enabled: providerTool.enabled,
             }).from(providerTool).where(eq(providerTool.providerId, row.id)).all();
 
             const enabledByName = new Map(existingTools.map((t) => [t.name, t.enabled]));
 
-            for (const old of existingTools) {
-                tx.run(sql`DELETE FROM provider_tool_fts WHERE tool_id = ${old.id}`);
-            }
             tx.delete(providerTool).where(eq(providerTool.providerId, row.id)).run();
 
             for (const tool of withJsNames) {
-                const toolId = `${row.id}:${tool.name}`;
                 tx.insert(providerTool).values({
-                    id: toolId,
+                    id: `${row.id}:${tool.name}`,
                     providerId: row.id,
                     name: tool.name,
                     jsName: tool.jsName,
@@ -421,12 +381,6 @@ export const syncProviderTools = async (providerId: string, options?: { signal?:
                     enabled: enabledByName.get(tool.name) ?? true,
                     updatedAt: now,
                 }).run();
-
-                const schemaKeys = extractSchemaSearchTerms(tool.inputSchema);
-                tx.run(sql`
-                    INSERT INTO provider_tool_fts (tool_id, provider_slug, name, js_name, title, description, schema_keys)
-                    VALUES (${toolId}, ${row.slug}, ${tool.name}, ${tool.jsName}, ${tool.title ?? ""}, ${tool.description}, ${schemaKeys})
-                `);
             }
 
             tx.update(provider)
@@ -457,13 +411,8 @@ const getPermittedProviders = (policy: GatewayPolicyContext) => {
 };
 
 
-export const ensureFreshProviderTools = async (policy: GatewayPolicyContext, providerSlug?: string): Promise<void> => {
-    let providers = getPermittedProviders(policy);
-    if (providerSlug?.trim()) {
-        const target = toProviderSlug(providerSlug);
-        providers = providers.filter((p) => p.slug === target);
-    }
-
+export const ensureFreshProviderTools = async (policy: GatewayPolicyContext): Promise<void> => {
+    const providers = getPermittedProviders(policy);
     const now = Date.now();
     const tasks: Array<Promise<void>> = [];
 
@@ -510,7 +459,7 @@ export const ensureFreshProviderTools = async (policy: GatewayPolicyContext, pro
 };
 
 
-export const listPermittedClassicTools = (policy: GatewayPolicyContext) => {
+export const listPermittedTools = (policy: GatewayPolicyContext) => {
     const providers = getPermittedProviders(policy);
     if (providers.length === 0) return [];
 
@@ -543,104 +492,6 @@ export const listPermittedClassicTools = (policy: GatewayPolicyContext) => {
                 destructive: tool.destructive,
             };
         });
-};
-
-
-export const searchPermittedTools = (
-    policy: GatewayPolicyContext,
-    options: { query?: string; providerSlug?: string; limit?: number },
-): { providers: Array<{ slug: string; name: string; readOnly: boolean }>; tools: ToolSearchHit[] } => {
-    let providers = getPermittedProviders(policy);
-    if (options.providerSlug?.trim()) {
-        const target = toProviderSlug(options.providerSlug);
-        providers = providers.filter((p) => p.slug === target);
-    }
-
-    const providerSummaries = providers.map((p) => ({
-        slug: p.slug,
-        name: p.name,
-        readOnly: policy.readOnly || p.readOnly,
-    }));
-
-    if (providers.length === 0) {
-        return { providers: [], tools: [] };
-    }
-
-    const providerMap = new Map(providers.map((p) => [p.id, p]));
-    const limit = Math.max(1, Math.min(50, options.limit ?? 15));
-    const ftsQuery = options.query && options.query.trim() !== "*"
-        ? sanitizeFtsQuery(options.query)
-        : null;
-
-    let candidateRows: Array<typeof providerTool.$inferSelect>;
-
-    if (ftsQuery) {
-        const providerIdList = sql.join(providers.map((p) => sql`${p.id}`), sql`, `);
-        const readOnlyFilter = policy.readOnly
-            ? sql`AND pt.read_only = 1`
-            : sql`AND (p.read_only = 0 OR pt.read_only = 1)`;
-
-        const ftsMatches = db.all<{ tool_id: string }>(sql`
-            SELECT provider_tool_fts.tool_id
-            FROM provider_tool_fts
-            INNER JOIN provider_tool AS pt ON pt.id = provider_tool_fts.tool_id
-            INNER JOIN provider AS p ON p.id = pt.provider_id
-            WHERE provider_tool_fts MATCH ${ftsQuery}
-              AND p.enabled = 1
-              AND pt.enabled = 1
-              AND pt.provider_id IN (${providerIdList})
-              ${readOnlyFilter}
-            ORDER BY bm25(provider_tool_fts, 0.0, 2.0, 5.0, 4.0, 3.0, 1.5, 1.0)
-            LIMIT ${limit}
-        `);
-
-        if (ftsMatches.length === 0) {
-            return { providers: providerSummaries, tools: [] };
-        }
-
-        const matchedIds = ftsMatches.map((m) => m.tool_id);
-        const rankById = new Map(matchedIds.map((id, idx) => [id, idx]));
-
-        candidateRows = db.select()
-            .from(providerTool)
-            .where(inArray(providerTool.id, matchedIds))
-            .all()
-            .sort((a, b) => (rankById.get(a.id) ?? 999) - (rankById.get(b.id) ?? 999));
-    }
-    else {
-        candidateRows = db.select()
-            .from(providerTool)
-            .where(and(
-                inArray(providerTool.providerId, providers.map((p) => p.id)),
-                eq(providerTool.enabled, true),
-            ))
-            .orderBy(asc(providerTool.providerId), asc(providerTool.name))
-            .all();
-    }
-
-    const hits: ToolSearchHit[] = [];
-    for (const tool of candidateRows) {
-        const p = providerMap.get(tool.providerId);
-        if (!p) continue;
-        if ((policy.readOnly || p.readOnly) && !tool.readOnly) continue;
-
-        hits.push({
-            id: `${p.slug}.${tool.jsName}`,
-            providerSlug: p.slug,
-            providerName: p.name,
-            toolName: tool.name,
-            jsName: tool.jsName,
-            jsCall: `tools.${p.slug}.${tool.jsName}`,
-            title: tool.title,
-            description: tool.description,
-            readOnly: tool.readOnly,
-            destructive: tool.destructive,
-        });
-
-        if (hits.length >= limit) break;
-    }
-
-    return { providers: providerSummaries, tools: hits };
 };
 
 
@@ -691,46 +542,6 @@ const resolvePermittedTool = (
     }
 
     return { providerRow, toolRow };
-};
-
-
-export const describePermittedTools = (
-    policy: GatewayPolicyContext,
-    identifiers: string[],
-): { tools: ToolDescriptionEntry[]; missing: string[] } => {
-    const tools: ToolDescriptionEntry[] = [];
-    const missing: string[] = [];
-
-    for (const id of identifiers.slice(0, 20)) {
-        try {
-            const { providerRow, toolRow } = resolvePermittedTool(policy, id);
-            tools.push({
-                id: `${providerRow.slug}.${toolRow.jsName}`,
-                providerSlug: providerRow.slug,
-                toolName: toolRow.name,
-                jsName: toolRow.jsName,
-                title: toolRow.title,
-                description: toolRow.description,
-                readOnly: toolRow.readOnly,
-                destructive: toolRow.destructive,
-                signature: renderToolSignature({
-                    providerSlug: providerRow.slug,
-                    jsName: toolRow.jsName,
-                    description: toolRow.description,
-                    inputSchema: toolRow.inputSchema,
-                    outputSchema: toolRow.outputSchema,
-                    readOnly: toolRow.readOnly,
-                    destructive: toolRow.destructive,
-                }),
-                inputSchema: toolRow.inputSchema,
-            });
-        }
-        catch {
-            missing.push(id);
-        }
-    }
-
-    return { tools, missing };
 };
 
 
@@ -845,7 +656,7 @@ export const invokePermittedTool = async (
 };
 
 
-export const executeCodeModeScript = async (
+export const executeSandboxScript = async (
     policy: GatewayPolicyContext,
     input: { code: string; timeoutMs?: number; maxToolCalls?: number },
 ) => {

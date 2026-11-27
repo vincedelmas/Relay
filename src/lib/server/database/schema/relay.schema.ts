@@ -2,7 +2,7 @@ import {customJson} from "@/lib/server/database/custom-types";
 import {oauthClient} from "@/lib/server/database/schema/oauth.schema";
 import type {OAuthDiscoveryState} from "@modelcontextprotocol/sdk/client/auth.js";
 import {index, integer, snakeCase, text, uniqueIndex} from "drizzle-orm/sqlite-core";
-import type {ClientGatewayMode, ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
+import type {ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
 
 
 export const provider = snakeCase.table("provider", {
@@ -60,7 +60,6 @@ export const providerTool = snakeCase.table("provider_tool", {
 
 export const clientPolicy = snakeCase.table("client_policy", {
     clientId: text("client_id").primaryKey().references(() => oauthClient.clientId, { onDelete: "cascade" }),
-    mode: text("mode").$type<ClientGatewayMode>().default("code").notNull(),
     readOnly: integer("read_only", { mode: "boolean" }).default(false).notNull(),
     allowedProviderIds: customJson<string[]>("allowed_provider_ids").default([]).notNull(),
     revokedAt: integer("revoked_at"),

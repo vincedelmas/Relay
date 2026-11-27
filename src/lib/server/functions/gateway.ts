@@ -10,13 +10,10 @@ import {listConnectedClients, revokeClientConnection, saveClientPolicy} from "@/
 import {
     createProvider,
     deleteProvider,
-    describePermittedTools,
     disconnectProviderOAuth,
-    ensureFreshProviderTools,
-    executeCodeModeScript,
+    executeSandboxScript,
     invokePermittedTool,
     listProvidersWithSummary,
-    searchPermittedTools,
     syncProviderTools,
     toggleProviderTool,
     updateProvider,
@@ -160,7 +157,6 @@ export const saveClientPolicyFn = createServerFn({ method: "POST" })
     .middleware([requiredAuthMiddleware])
     .validator(z.object({
         clientId: z.string().min(1),
-        mode: z.enum(["code", "classic"]).optional(),
         readOnly: z.boolean().optional(),
         allowedProviderIds: z.array(z.string()).optional(),
         toggleProvider: z.object({
@@ -180,37 +176,6 @@ export const disconnectClientFn = createServerFn({ method: "POST" })
     .handler(({ data, context: { currentUser } }) => {
         revokeClientConnection(currentUser.id, data.clientId);
         return { ok: true };
-    });
-
-
-export const playgroundSearchFn = createServerFn({ method: "POST" })
-    .middleware([requiredAuthMiddleware])
-    .validator(z.object({
-        query: z.string().optional(),
-        providerSlug: z.string().optional(),
-        limit: z.number().int().min(1).max(50).optional(),
-    }))
-    .handler(async ({ data }) => {
-        const policy = { allowedProviderIds: null, readOnly: false };
-        await ensureFreshProviderTools(policy, data.providerSlug);
-        return searchPermittedTools(policy, data);
-    });
-
-
-export const playgroundDescribeFn = createServerFn({ method: "POST" })
-    .middleware([requiredAuthMiddleware])
-    .validator(z.object({
-        tools: z.array(z.string().min(1)).min(1).max(20),
-    }))
-    .handler(({ data }) => {
-        const res = describePermittedTools(
-            { allowedProviderIds: null, readOnly: false },
-            data.tools,
-        );
-        return {
-            tools: res.tools.map(({ inputSchema: _inputSchema, ...rest }) => rest),
-            missing: res.missing,
-        };
     });
 
 
@@ -242,7 +207,7 @@ export const playgroundExecuteFn = createServerFn({ method: "POST" })
         timeoutMs: z.number().int().min(1_000).max(60_000).optional(),
     }))
     .handler(async ({ data }) => {
-        const res = await executeCodeModeScript(
+        const res = await executeSandboxScript(
             { allowedProviderIds: null, readOnly: false, clientName: "Playground" },
             data,
         );

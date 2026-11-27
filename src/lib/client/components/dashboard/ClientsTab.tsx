@@ -7,11 +7,10 @@ import {Switch} from "@/lib/client/components/ui/switch";
 import {Checkbox} from "@/lib/client/components/ui/checkbox";
 import {Card, CardContent} from "@/lib/client/components/ui/card";
 import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
-import {Tooltip, TooltipContent, TooltipTrigger} from "@/lib/client/components/ui/tooltip";
 import type {GatewayClient, GatewayProvider} from "@/lib/types/gateway.types";
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from "@/lib/client/components/ui/dialog";
 import {useDisconnectClientMutation, useSaveClientPolicyMutation} from "@/lib/client/react-query/query-mutations/gateway.mutations";
-import {AlertCircle, Bot, Check, Code2, Copy, ExternalLink, KeyRound, Layers, Lock, ShieldCheck, Unplug} from "lucide-react";
+import {AlertCircle, Bot, Check, Copy, ExternalLink, KeyRound, Lock, ShieldCheck, Unplug} from "lucide-react";
 
 
 interface ClientsTabProps {
@@ -57,7 +56,7 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                         Connected AI Clients
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Switch any OAuth 2.1 client between Code Mode and Classic MCP, enforce read-only access, or edit allowed providers live.
+                        Control which providers each OAuth 2.1 assistant can access, enforce read-only access, or revoke connections live.
                     </p>
                 </div>
 
@@ -140,19 +139,6 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                                                 <h3 className="text-sm font-semibold tracking-tight text-foreground">
                                                     {client.name}
                                                 </h3>
-                                                <Badge variant={client.mode === "code" ? "success" : "info"}>
-                                                    {client.mode === "code" ? (
-                                                        <>
-                                                            <Code2/>
-                                                            Code Mode
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Layers/>
-                                                            Classic MCP
-                                                        </>
-                                                    )}
-                                                </Badge>
                                                 {client.readOnly && (
                                                     <Badge variant="warning">
                                                         <Lock/>
@@ -199,84 +185,34 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                                         </div>
                                     </div>
 
-                                    <Button
-                                        size="xs"
-                                        variant="destructive"
-                                        disabled={disconnectMutation.isPending}
-                                        onClick={() => setRevokingClient(client)}
-                                    >
-                                        <Unplug/>
-                                        Revoke
-                                    </Button>
-                                </div>
+                                    <div className="flex items-center gap-3">
+                                        <label
+                                            htmlFor={`client-readonly-${client.clientId}`}
+                                            className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                                        >
+                                            <ShieldCheck className={cn("size-3.5", client.readOnly ? "text-warning" : "text-muted-foreground")}/>
+                                            <span className={client.readOnly ? "text-foreground" : undefined}>Read-only</span>
+                                            <Switch
+                                                size="sm"
+                                                checked={client.readOnly}
+                                                id={`client-readonly-${client.clientId}`}
+                                                onCheckedChange={(checked) => policyMutation.mutate({
+                                                    readOnly: checked,
+                                                    clientId: client.clientId,
+                                                })}
+                                            />
+                                        </label>
 
-                                <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/60 bg-black/20 px-4 py-2.5">
-                                    <div className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-black/35 p-0.5">
-                                        <Tooltip>
-                                            <TooltipTrigger
-                                                render={
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => policyMutation.mutate({
-                                                            mode: "code",
-                                                            clientId: client.clientId,
-                                                        })}
-                                                        className={cn(
-                                                            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
-                                                            client.mode === "code"
-                                                                ? "bg-brand/15 text-brand ring-1 ring-brand/30"
-                                                                : "text-muted-foreground hover:text-foreground",
-                                                        )}
-                                                    />
-                                                }
-                                            >
-                                                <Code2 className="size-3"/>
-                                                Code Mode
-                                            </TooltipTrigger>
-                                            <TooltipContent>4 meta-tools + QuickJS sandbox</TooltipContent>
-                                        </Tooltip>
-
-                                        <Tooltip>
-                                            <TooltipTrigger
-                                                render={
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => policyMutation.mutate({
-                                                            mode: "classic",
-                                                            clientId: client.clientId,
-                                                        })}
-                                                        className={cn(
-                                                            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
-                                                            client.mode === "classic"
-                                                                ? "bg-info/15 text-info ring-1 ring-info/30"
-                                                                : "text-muted-foreground hover:text-foreground",
-                                                        )}
-                                                    />
-                                                }
-                                            >
-                                                <Layers className="size-3"/>
-                                                Classic MCP
-                                            </TooltipTrigger>
-                                            <TooltipContent>Expose allowed tools directly</TooltipContent>
-                                        </Tooltip>
+                                        <Button
+                                            size="xs"
+                                            variant="destructive"
+                                            disabled={disconnectMutation.isPending}
+                                            onClick={() => setRevokingClient(client)}
+                                        >
+                                            <Unplug/>
+                                            Revoke
+                                        </Button>
                                     </div>
-
-                                    <label
-                                        htmlFor={`client-readonly-${client.clientId}`}
-                                        className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                                    >
-                                        <ShieldCheck className={cn("size-3.5", client.readOnly ? "text-warning" : "text-muted-foreground")}/>
-                                        <span className={client.readOnly ? "text-foreground" : undefined}>Read-only tools only</span>
-                                        <Switch
-                                            size="sm"
-                                            checked={client.readOnly}
-                                            id={`client-readonly-${client.clientId}`}
-                                            onCheckedChange={(checked) => policyMutation.mutate({
-                                                readOnly: checked,
-                                                clientId: client.clientId,
-                                            })}
-                                        />
-                                    </label>
                                 </div>
 
                                 <div className="flex flex-col gap-2.5 border-t border-border/60 p-4">
