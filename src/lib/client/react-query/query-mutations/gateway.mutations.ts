@@ -155,6 +155,12 @@ export const useOAuthConsentMutation = (params: {
 }) => {
     return useMutation({
         mutationFn: async (accept: boolean) => {
+            const { data, error } = await authClient.oauth2.consent({
+                accept,
+                oauth_query: params.oauthQuery,
+            });
+            if (error) throw new Error(error.message || "Consent request failed.");
+
             if (accept) {
                 await saveClientPolicyFn({
                     data: {
@@ -165,11 +171,6 @@ export const useOAuthConsentMutation = (params: {
                 });
             }
 
-            const { data, error } = await authClient.oauth2.consent({
-                accept,
-                oauth_query: params.oauthQuery,
-            });
-            if (error) throw new Error(error.message || "Consent request failed.");
             return data;
         },
         onSuccess: (data) => {

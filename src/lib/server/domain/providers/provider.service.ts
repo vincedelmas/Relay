@@ -263,8 +263,16 @@ export const updateProvider = async (input: {
     }
 
     if (input.config !== undefined) {
-        const cleaned = Object.fromEntries(Object.entries(input.config).filter(([, v]) => v.trim().length > 0));
-        patch.encryptedConfig = Object.keys(cleaned).length > 0 ? await encryptJson(cleaned) : null;
+        const existingConfig = existing.encryptedConfig
+            ? await decryptJson<Record<string, string>>(existing.encryptedConfig)
+            : {};
+        const submitted = Object.fromEntries(
+            Object.entries(input.config)
+                .map(([k, v]) => [k, v.trim()] as const)
+                .filter(([, v]) => v.length > 0),
+        );
+        const merged = { ...existingConfig, ...submitted };
+        patch.encryptedConfig = Object.keys(merged).length > 0 ? await encryptJson(merged) : null;
     }
 
     db.transaction((tx) => {
@@ -356,7 +364,24 @@ export const syncProviderTools = async (providerId: string, options?: { signal?:
         const withJsNames = assignUniqueJsNames(fetchedTools);
         const now = new Date();
 
-        db.transaction((tx) => {
+        const committed = db.transaction((tx) => {
+            const current = tx.select({
+                url: provider.url,
+                kind: provider.kind,
+                authType: provider.authType,
+                builtinKey: provider.builtinKey,
+            }).from(provider).where(eq(provider.id, row.id)).get();
+
+            if (
+                !current
+                || current.kind !== row.kind
+                || current.url !== row.url
+                || current.authType !== row.authType
+                || current.builtinKey !== row.builtinKey
+            ) {
+                return false;
+            }
+
             const existingTools = tx.select({
                 name: providerTool.name,
                 enabled: providerTool.enabled,
@@ -387,16 +412,30 @@ export const syncProviderTools = async (providerId: string, options?: { signal?:
                 .set({ lastSyncedAt: now, lastError: null, updatedAt: now })
                 .where(eq(provider.id, row.id))
                 .run();
+
+            return true;
         });
+
+        if (!committed) {
+            logger.info({ providerId: row.id, provider: row.slug }, "Discarded stale tool sync after provider configuration changed");
+            return { toolCount: 0 };
+        }
 
         return { toolCount: withJsNames.length };
     }
     catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        db.update(provider)
-            .set({ lastError: message.slice(0, 500), updatedAt: new Date() })
-            .where(eq(provider.id, row.id))
-            .run();
+        const current = db.select({
+            url: provider.url,
+            authType: provider.authType,
+        }).from(provider).where(eq(provider.id, row.id)).get();
+
+        if (current && current.url === row.url && current.authType === row.authType) {
+            db.update(provider)
+                .set({ lastError: message.slice(0, 500), updatedAt: new Date() })
+                .where(eq(provider.id, row.id))
+                .run();
+        }
         throw err;
     }
 };
@@ -501,47 +540,67 @@ const resolvePermittedTool = (
 ): { providerRow: typeof provider.$inferSelect; toolRow: typeof providerTool.$inferSelect } => {
     const trimmed = identifier.trim();
     const providers = getPermittedProviders(policy);
-    const bySlug = new Map(providers.map((p) => [p.slug, p]));
 
-    let providerSlug = "";
-    let toolKey = "";
+    const candidates: Array<{ providerRow: typeof provider.$inferSelect; toolKey: string; exactJsNameOnly: boolean }> = [];
 
-    if (trimmed.includes("__")) {
-        const idx = trimmed.indexOf("__");
-        providerSlug = trimmed.slice(0, idx);
-        toolKey = trimmed.slice(idx + 2);
-    }
-    else if (trimmed.includes(".")) {
-        const idx = trimmed.indexOf(".");
-        providerSlug = trimmed.slice(0, idx);
-        toolKey = trimmed.slice(idx + 1);
-    }
-    else if (trimmed.includes(":")) {
-        const idx = trimmed.indexOf(":");
-        providerSlug = trimmed.slice(0, idx);
-        toolKey = trimmed.slice(idx + 1);
+    // Prefer exact advertised `${slug}__${jsName}` prefix matches (longest slug first handles slugs ending in `_`, e.g. `default_`)
+    const prefixMatches = providers
+        .filter((p) => trimmed.startsWith(`${p.slug}__`))
+        .sort((a, b) => b.slug.length - a.slug.length);
+
+    for (const providerRow of prefixMatches) {
+        candidates.push({
+            providerRow,
+            toolKey: trimmed.slice(providerRow.slug.length + 2),
+            exactJsNameOnly: true,
+        });
     }
 
-    const providerRow = bySlug.get(providerSlug);
-    if (!providerRow) {
+    if (candidates.length === 0) {
+        const bySlug = new Map(providers.map((p) => [p.slug, p]));
+        const sepIdx = trimmed.includes(".") ? trimmed.indexOf(".") : trimmed.indexOf(":");
+        if (sepIdx > 0) {
+            const providerRow = bySlug.get(trimmed.slice(0, sepIdx));
+            if (providerRow) {
+                candidates.push({
+                    providerRow,
+                    toolKey: trimmed.slice(sepIdx + 1),
+                    exactJsNameOnly: false,
+                });
+            }
+        }
+    }
+
+    if (candidates.length === 0) {
         throw new Error(`Tool "${identifier}" is not permitted or its provider is disabled.`);
     }
 
-    const providerTools = db.select()
-        .from(providerTool)
-        .where(and(eq(providerTool.providerId, providerRow.id), eq(providerTool.enabled, true)))
-        .all();
+    let resolved: { providerRow: typeof provider.$inferSelect; toolRow: typeof providerTool.$inferSelect } | undefined;
 
-    const toolRow = providerTools.find((t) => t.jsName === toolKey || t.name === toolKey);
-    if (!toolRow) {
-        throw new Error(`Tool "${identifier}" not found or disabled on provider "${providerRow.slug}".`);
+    for (const candidate of candidates) {
+        const providerTools = db.select()
+            .from(providerTool)
+            .where(and(eq(providerTool.providerId, candidate.providerRow.id), eq(providerTool.enabled, true)))
+            .all();
+
+        const exactMatch = providerTools.find((t) => t.jsName === candidate.toolKey);
+        const toolRow = exactMatch ?? (candidate.exactJsNameOnly ? undefined : providerTools.find((t) => t.name === candidate.toolKey));
+
+        if (toolRow) {
+            resolved = { providerRow: candidate.providerRow, toolRow };
+            break;
+        }
     }
 
-    if ((policy.readOnly || providerRow.readOnly) && !toolRow.readOnly) {
-        throw new Error(`Tool "${providerRow.slug}.${toolRow.jsName}" is blocked because read-only mode is active.`);
+    if (!resolved) {
+        throw new Error(`Tool "${identifier}" not found or disabled on provider "${candidates[0].providerRow.slug}".`);
     }
 
-    return { providerRow, toolRow };
+    if ((policy.readOnly || resolved.providerRow.readOnly) && !resolved.toolRow.readOnly) {
+        throw new Error(`Tool "${resolved.providerRow.slug}.${resolved.toolRow.jsName}" is blocked because read-only mode is active.`);
+    }
+
+    return resolved;
 };
 
 

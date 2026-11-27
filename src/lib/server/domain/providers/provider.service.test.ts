@@ -1,5 +1,6 @@
 import {eq} from "drizzle-orm";
 import {db} from "@/lib/server/database/db";
+import {decryptJson} from "@/lib/server/core/crypto";
 import {afterAll, describe, expect, test} from "bun:test";
 import {executionLog, provider, providerTool} from "@/lib/server/database/schema";
 import {
@@ -97,5 +98,43 @@ describe("ProviderService policy + sandbox", () => {
         const updatedRow = db.select().from(provider).where(eq(provider.id, remote.id)).get();
         expect(updatedRow?.encryptedAuthSecret).toBeNull();
         expect(db.select().from(providerTool).where(eq(providerTool.providerId, remote.id)).all()).toHaveLength(0);
+    });
+
+    test("resolves reserved-word provider slugs ending in '_' and merges partial builtin config edits", async () => {
+        const created = await createProvider({
+            name: "Default",
+            slug: "default",
+            kind: "builtin",
+            builtinKey: "steam",
+            config: { apiKey: "initial-steam-key", steamId: "76561198000000001" },
+        });
+        createdProviderIds.push(created.id);
+        expect(created.slug).toBe("default_");
+
+        // Trailing `_` in provider slug produces `___` in classicName; resolver must still match it
+        const tools = listPermittedTools({ allowedProviderIds: [created.id], readOnly: true });
+        expect(tools).toHaveLength(1);
+        expect(tools[0].classicName).toBe(`${created.slug}__request`);
+
+        await expect(invokePermittedTool(
+            { allowedProviderIds: [created.id], readOnly: true },
+            tools[0].classicName,
+            { api: "webapi", path: "https://evil.example/x" },
+            { logExecution: false },
+        )).rejects.toThrow(/relative endpoint path/i);
+
+        // Updating only steamId must preserve apiKey
+        await updateProvider({
+            id: created.id,
+            config: { steamId: "76561198000000002", apiKey: "" },
+        });
+
+        const updatedRow = db.select().from(provider).where(eq(provider.id, created.id)).get();
+        expect(updatedRow?.encryptedConfig).toBeTruthy();
+        const decrypted = await decryptJson<Record<string, string>>(updatedRow!.encryptedConfig!);
+        expect(decrypted).toEqual({
+            apiKey: "initial-steam-key",
+            steamId: "76561198000000002",
+        });
     });
 });

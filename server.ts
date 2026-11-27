@@ -52,6 +52,7 @@ const startServer = async () => {
 
     server = Bun.serve({
         port: PORT,
+        idleTimeout: 75,
         routes: {
             ...routes,
             "/*": (req: Request) => {
