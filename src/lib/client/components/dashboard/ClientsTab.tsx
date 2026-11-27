@@ -36,23 +36,15 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
     };
 
     const toggleAllowedProvider = (client: GatewayClient, providerId: string, checked: boolean) => {
-        const nextAllowed = checked
-            ? Array.from(new Set([...client.allowedProviderIds, providerId]))
-            : client.allowedProviderIds.filter((id) => id !== providerId);
-
         policyMutation.mutate({
-            mode: client.mode,
             clientId: client.clientId,
-            readOnly: client.readOnly,
-            allowedProviderIds: nextAllowed,
+            toggleProvider: { providerId, allowed: checked },
         });
     };
 
     const setAllProviders = (client: GatewayClient, providerIds: string[]) => {
         policyMutation.mutate({
-            mode: client.mode,
             clientId: client.clientId,
-            readOnly: client.readOnly,
             allowedProviderIds: providerIds,
         });
     };
@@ -228,8 +220,6 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                                                         onClick={() => policyMutation.mutate({
                                                             mode: "code",
                                                             clientId: client.clientId,
-                                                            readOnly: client.readOnly,
-                                                            allowedProviderIds: client.allowedProviderIds,
                                                         })}
                                                         className={cn(
                                                             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
@@ -254,8 +244,6 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                                                         onClick={() => policyMutation.mutate({
                                                             mode: "classic",
                                                             clientId: client.clientId,
-                                                            readOnly: client.readOnly,
-                                                            allowedProviderIds: client.allowedProviderIds,
                                                         })}
                                                         className={cn(
                                                             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
@@ -284,10 +272,8 @@ export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps)
                                             checked={client.readOnly}
                                             id={`client-readonly-${client.clientId}`}
                                             onCheckedChange={(checked) => policyMutation.mutate({
-                                                mode: client.mode,
                                                 readOnly: checked,
                                                 clientId: client.clientId,
-                                                allowedProviderIds: client.allowedProviderIds,
                                             })}
                                         />
                                     </label>

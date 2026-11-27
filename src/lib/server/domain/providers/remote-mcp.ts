@@ -1,5 +1,6 @@
 import {decryptSecret} from "@/lib/server/core/crypto";
 import {Client} from "@modelcontextprotocol/sdk/client/index.js";
+import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js";
 import {UnauthorizedError} from "@modelcontextprotocol/sdk/client/auth.js";
 import type {FetchLike} from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {RemoteProviderDescriptor, UpstreamToolInfo} from "@/lib/types/gateway.types";
@@ -48,7 +49,7 @@ const withRemoteClient = async <T>(descriptor: RemoteProviderDescriptor, action:
             headers.Authorization = `Bearer ${token}`;
         }
         else if (descriptor.authType === "oauth") {
-            await ensureFreshUpstreamTokens(descriptor);
+            await ensureFreshUpstreamTokens(descriptor, { signal });
             authProvider = new RelayUpstreamOAuthProvider(descriptor.id, descriptor.name, false);
         }
 
@@ -83,7 +84,7 @@ const withRemoteClient = async <T>(descriptor: RemoteProviderDescriptor, action:
     }
     catch (err) {
         if (descriptor.authType === "oauth" && isAuthFailure(err)) {
-            await ensureFreshUpstreamTokens(descriptor, { force: true });
+            await ensureFreshUpstreamTokens(descriptor, { force: true, signal });
             try {
                 return await runOnce();
             }
@@ -128,14 +129,14 @@ export const callRemoteMcpTool = async (
     toolName: string,
     args: Record<string, unknown>,
     signal?: AbortSignal,
-): Promise<{ content: Array<{ type: string; text?: string }>; structuredContent?: Record<string, unknown>; isError?: boolean }> => {
+): Promise<{ content: CallToolResult["content"]; structuredContent?: Record<string, unknown>; isError?: boolean }> => {
     return withRemoteClient(descriptor, async (client) => {
         const result = await client.callTool({ name: toolName, arguments: args }, undefined, { signal });
 
         return {
             isError: Boolean(result.isError),
             structuredContent: result.structuredContent as Record<string, unknown> | undefined,
-            content: Array.isArray(result.content) ? (result.content as Array<{ type: string; text?: string }>) : [],
+            content: Array.isArray(result.content) ? (result.content as CallToolResult["content"]) : [],
         };
     }, signal);
 };

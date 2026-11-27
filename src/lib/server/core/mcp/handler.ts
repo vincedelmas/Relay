@@ -86,6 +86,7 @@ const configureCodeModeServer = (server: McpServer, policy: GatewayPolicyContext
             return {
                 content: response.content,
                 isError: response.isError,
+                ...(response.structuredContent !== undefined ? { structuredContent: response.structuredContent } : {}),
             };
         }
         catch (err) {
@@ -161,6 +162,7 @@ const configureClassicModeServer = (server: McpServer, policy: GatewayPolicyCont
             return {
                 content: response.content,
                 isError: response.isError,
+                ...(response.structuredContent !== undefined ? { structuredContent: response.structuredContent } : {}),
             };
         }
         catch (err) {

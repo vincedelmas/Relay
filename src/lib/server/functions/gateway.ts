@@ -160,9 +160,13 @@ export const saveClientPolicyFn = createServerFn({ method: "POST" })
     .middleware([requiredAuthMiddleware])
     .validator(z.object({
         clientId: z.string().min(1),
-        mode: z.enum(["code", "classic"]),
-        readOnly: z.boolean(),
-        allowedProviderIds: z.array(z.string()),
+        mode: z.enum(["code", "classic"]).optional(),
+        readOnly: z.boolean().optional(),
+        allowedProviderIds: z.array(z.string()).optional(),
+        toggleProvider: z.object({
+            providerId: z.string().min(1),
+            allowed: z.boolean(),
+        }).optional(),
     }))
     .handler(({ data }) => {
         saveClientPolicy(data);
@@ -224,7 +228,9 @@ export const playgroundCallFn = createServerFn({ method: "POST" })
         );
         return {
             isError: res.isError,
-            text: res.content.map((c) => c.text).join("\n"),
+            text: res.content
+                .map((c) => (c.type === "text" ? c.text : JSON.stringify(c, null, 2)))
+                .join("\n"),
         };
     });
 

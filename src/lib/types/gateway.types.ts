@@ -1,4 +1,5 @@
 import type {getGatewayState} from "@/lib/server/functions/gateway";
+import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js";
 
 
 export type ClientGatewayMode = "code" | "classic";
@@ -117,7 +118,7 @@ export interface ToolDescriptionEntry {
 
 export interface InvokedToolResponse {
     data: unknown;
-    content: Array<{ type: "text"; text: string }>;
+    content: CallToolResult["content"];
     structuredContent?: Record<string, unknown>;
     isError: boolean;
 }

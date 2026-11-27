@@ -130,9 +130,10 @@ export const useSaveClientPolicyMutation = () => {
     return useMutation({
         mutationFn: (data: {
             clientId: string;
-            mode: ClientGatewayMode;
-            readOnly: boolean;
-            allowedProviderIds: string[];
+            mode?: ClientGatewayMode;
+            readOnly?: boolean;
+            allowedProviderIds?: string[];
+            toggleProvider?: { providerId: string; allowed: boolean };
         }) => saveClientPolicyFn({ data }),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: gatewayStateOptions.queryKey }),
     });

@@ -1,6 +1,6 @@
-import {eq} from "drizzle-orm";
+import {eq, sql} from "drizzle-orm";
 import {db} from "@/lib/server/database/db";
-import {executionLog} from "@/lib/server/database/schema";
+import {executionLog, provider, providerTool} from "@/lib/server/database/schema";
 import {afterAll, describe, expect, test} from "bun:test";
 import {
     createProvider,
@@ -9,6 +9,7 @@ import {
     executeCodeModeScript,
     invokePermittedTool,
     searchPermittedTools,
+    updateProvider,
 } from "./provider.service";
 
 
@@ -75,5 +76,83 @@ describe("ProviderService policy + FTS5", () => {
             "get_recently_played",
             "search_store",
         ]);
+    });
+
+    test("filters FTS5 matches by allowlist before LIMIT and clears state on URL change", async () => {
+        const suffix = Date.now();
+        const disallowed = await createProvider({
+            name: "Noisy Remote",
+            slug: `noisy_${suffix}`,
+            kind: "remote_mcp",
+            url: "https://noisy.example/mcp",
+            authType: "oauth",
+        });
+        const allowed = await createProvider({
+            name: "Allowed Remote",
+            slug: `allowed_${suffix}`,
+            kind: "remote_mcp",
+            url: "https://allowed.example/mcp",
+            authType: "bearer",
+            authSecret: "secret-token-for-old-host",
+        });
+        createdProviderIds.push(disallowed.id, allowed.id);
+
+        const now = new Date();
+        // Insert 10 disallowed tools with strong keyword matches + 1 permitted tool
+        for (let i = 0; i < 10; i++) {
+            const toolId = `${disallowed.id}:widget_tool_${i}`;
+            db.insert(providerTool).values({
+                id: toolId,
+                providerId: disallowed.id,
+                name: `widget_tool_${i}`,
+                jsName: `widget_tool_${i}`,
+                description: "widget widget widget",
+                inputSchema: { type: "object", properties: {} },
+                readOnly: true,
+                destructive: false,
+                enabled: true,
+                updatedAt: now,
+            }).run();
+            db.run(sql`
+                INSERT INTO provider_tool_fts (tool_id, provider_slug, name, js_name, title, description, schema_keys)
+                VALUES (${toolId}, ${disallowed.slug}, ${`widget_tool_${i}`}, ${`widget_tool_${i}`}, "", "widget widget widget", "")
+            `);
+        }
+
+        const permittedToolId = `${allowed.id}:find_widget`;
+        db.insert(providerTool).values({
+            id: permittedToolId,
+            providerId: allowed.id,
+            name: "find_widget",
+            jsName: "find_widget",
+            description: "Find a single widget",
+            inputSchema: { type: "object", properties: {} },
+            readOnly: true,
+            destructive: false,
+            enabled: true,
+            updatedAt: now,
+        }).run();
+        db.run(sql`
+            INSERT INTO provider_tool_fts (tool_id, provider_slug, name, js_name, title, description, schema_keys)
+            VALUES (${permittedToolId}, ${allowed.slug}, "find_widget", "find_widget", "", "Find a single widget", "")
+        `);
+
+        const search = searchPermittedTools(
+            { allowedProviderIds: [allowed.id], readOnly: true },
+            { query: "widget", limit: 1 },
+        );
+        expect(search.tools).toHaveLength(1);
+        expect(search.tools[0].id).toBe(`${allowed.slug}.find_widget`);
+
+        // Changing the endpoint URL must clear stored bearer token and cached tools
+        await updateProvider({
+            id: allowed.id,
+            url: "https://replacement.example/mcp",
+        });
+
+        const updatedRow = db.select().from(provider).where(eq(provider.id, allowed.id)).get();
+        expect(updatedRow?.encryptedAuthSecret).toBeNull();
+        expect(db.select().from(providerTool).where(eq(providerTool.providerId, allowed.id)).all()).toHaveLength(0);
+        expect(searchPermittedTools({ allowedProviderIds: [allowed.id], readOnly: false }, { query: "widget" }).tools).toHaveLength(0);
     });
 });

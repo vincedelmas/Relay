@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {db} from "@/lib/server/database/db";
 import {logger} from "@/lib/server/core/logger";
 import {and, asc, eq, inArray, sql} from "drizzle-orm";
+import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js";
 import {runQuickJsSandbox} from "@/lib/server/core/sandbox/quickjs";
 import {provider, providerTool} from "@/lib/server/database/schema";
 import {getBuiltInProvider} from "@/lib/server/domain/providers/builtins";
@@ -35,25 +36,34 @@ const sanitizeFtsQuery = (raw: string): string | null => {
 };
 
 
+const formatContentText = (content: CallToolResult["content"]): string => {
+    return content
+        .map((block) => (block.type === "text" ? block.text : JSON.stringify(block)))
+        .join("\n");
+};
+
+
 const unwrapMcpToolResult = (raw: {
     isError?: boolean;
     structuredContent?: Record<string, unknown>;
-    content: Array<{ type: string; text?: string }>;
+    content: CallToolResult["content"];
 }): InvokedToolResponse => {
-    const textBlocks = raw.content
-        .filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string");
-
-    const normalizedContent: Array<{ type: "text"; text: string }> = textBlocks.length > 0
-        ? textBlocks
-        : raw.structuredContent
+    const normalizedContent: CallToolResult["content"] = raw.content.length > 0
+        ? raw.content
+        : raw.structuredContent !== undefined
             ? [{ type: "text", text: JSON.stringify(raw.structuredContent) }]
-            : [{ type: "text", text: JSON.stringify(raw.content) }];
+            : [];
+
+    const textBlocks = raw.content.filter(
+        (block): block is Extract<CallToolResult["content"][number], { type: "text" }> => block.type === "text",
+    );
+    const allText = textBlocks.length === raw.content.length;
 
     let data: unknown;
     if (raw.structuredContent !== undefined) {
         data = raw.structuredContent;
     }
-    else if (textBlocks.length === 1) {
+    else if (allText && textBlocks.length === 1) {
         try {
             data = JSON.parse(textBlocks[0].text);
         }
@@ -61,7 +71,7 @@ const unwrapMcpToolResult = (raw: {
             data = textBlocks[0].text;
         }
     }
-    else if (textBlocks.length > 1) {
+    else if (allText && textBlocks.length > 1) {
         data = textBlocks.map((b) => b.text);
     }
     else {
@@ -233,10 +243,19 @@ export const updateProvider = async (input: {
     if (input.enabled !== undefined) patch.enabled = input.enabled;
     if (input.readOnly !== undefined) patch.readOnly = input.readOnly;
 
-    if (input.url !== undefined && existing.kind === "remote_mcp") {
-        new URL(input.url.trim());
-        patch.url = input.url.trim();
+    const trimmedUrl = input.url !== undefined && existing.kind === "remote_mcp"
+        ? input.url.trim()
+        : undefined;
+    if (trimmedUrl !== undefined) {
+        new URL(trimmedUrl);
+        patch.url = trimmedUrl;
     }
+
+    const urlChanged = trimmedUrl !== undefined && trimmedUrl !== existing.url;
+    const nextAuthType = input.authType !== undefined && existing.kind === "remote_mcp"
+        ? input.authType
+        : existing.authType;
+    const authTypeChanged = nextAuthType !== existing.authType;
 
     if (input.authType !== undefined && existing.kind === "remote_mcp") {
         patch.authType = input.authType;
@@ -247,16 +266,46 @@ export const updateProvider = async (input: {
             ? await encryptSecret(input.authSecret.trim())
             : null;
     }
+    else if (urlChanged || (authTypeChanged && nextAuthType !== "bearer")) {
+        patch.encryptedAuthSecret = null;
+    }
+
+    if (urlChanged) {
+        patch.lastSyncedAt = null;
+        patch.lastError = null;
+    }
 
     if (input.config !== undefined) {
         const cleaned = Object.fromEntries(Object.entries(input.config).filter(([, v]) => v.trim().length > 0));
         patch.encryptedConfig = Object.keys(cleaned).length > 0 ? await encryptJson(cleaned) : null;
     }
 
-    db.update(provider)
-        .set(patch)
-        .where(eq(provider.id, input.id))
-        .run();
+    db.transaction((tx) => {
+        if (urlChanged) {
+            const toolIds = tx.select({ id: providerTool.id })
+                .from(providerTool)
+                .where(eq(providerTool.providerId, input.id))
+                .all()
+                .map((t) => t.id);
+
+            for (const toolId of toolIds) {
+                tx.run(sql`DELETE FROM provider_tool_fts WHERE tool_id = ${toolId}`);
+            }
+
+            tx.delete(providerTool)
+                .where(eq(providerTool.providerId, input.id))
+                .run();
+        }
+
+        tx.update(provider)
+            .set(patch)
+            .where(eq(provider.id, input.id))
+            .run();
+    });
+
+    if (urlChanged || (authTypeChanged && nextAuthType !== "oauth")) {
+        clearUpstreamOAuthState(input.id);
+    }
 
     lastAutoSyncAttemptAt.delete(input.id);
 };
@@ -526,12 +575,23 @@ export const searchPermittedTools = (
     let candidateRows: Array<typeof providerTool.$inferSelect>;
 
     if (ftsQuery) {
+        const providerIdList = sql.join(providers.map((p) => sql`${p.id}`), sql`, `);
+        const readOnlyFilter = policy.readOnly
+            ? sql`AND pt.read_only = 1`
+            : sql`AND (p.read_only = 0 OR pt.read_only = 1)`;
+
         const ftsMatches = db.all<{ tool_id: string }>(sql`
-            SELECT tool_id
+            SELECT provider_tool_fts.tool_id
             FROM provider_tool_fts
+            INNER JOIN provider_tool AS pt ON pt.id = provider_tool_fts.tool_id
+            INNER JOIN provider AS p ON p.id = pt.provider_id
             WHERE provider_tool_fts MATCH ${ftsQuery}
+              AND p.enabled = 1
+              AND pt.enabled = 1
+              AND pt.provider_id IN (${providerIdList})
+              ${readOnlyFilter}
             ORDER BY bm25(provider_tool_fts, 0.0, 2.0, 5.0, 4.0, 3.0, 1.5, 1.0)
-            LIMIT ${limit * 4}
+            LIMIT ${limit}
         `);
 
         if (ftsMatches.length === 0) {
@@ -543,11 +603,7 @@ export const searchPermittedTools = (
 
         candidateRows = db.select()
             .from(providerTool)
-            .where(and(
-                inArray(providerTool.id, matchedIds),
-                inArray(providerTool.providerId, providers.map((p) => p.id)),
-                eq(providerTool.enabled, true),
-            ))
+            .where(inArray(providerTool.id, matchedIds))
             .all()
             .sort((a, b) => (rankById.get(a.id) ?? 999) - (rankById.get(b.id) ?? 999));
     }
@@ -762,7 +818,7 @@ export const invokePermittedTool = async (
                 toolName: resolvedToolName,
                 toolCallCount: 1,
                 status: response.isError ? "error" : "ok",
-                errorMessage: response.isError ? response.content.map((c) => c.text).join("\n") : null,
+                errorMessage: response.isError ? formatContentText(response.content) : null,
                 durationMs: Date.now() - startedAt,
             });
         }
@@ -812,7 +868,7 @@ export const executeCodeModeScript = async (
                     logExecution: false,
                 });
                 if (result.isError) {
-                    throw new Error(result.content.map((c) => c.text).join("\n") || `Tool ${providerSlug}.${jsName} returned an error.`);
+                    throw new Error(formatContentText(result.content) || `Tool ${providerSlug}.${jsName} returned an error.`);
                 }
                 return result.data;
             },

@@ -95,7 +95,7 @@ export const fetchClientMetadataResource: ClientMetadataResourceFetch = async (i
             family: pinned.family,
         }, (res) => {
             const status = res.statusCode ?? 500;
-            if (status >= 300 && status < 400) {
+            if (status === 301 || status === 302 || status === 303 || status === 307 || status === 308) {
                 res.destroy();
                 reject(new Error("Redirects are not allowed for CIMD metadata resources"));
                 return;
@@ -124,7 +124,8 @@ export const fetchClientMetadataResource: ClientMetadataResourceFetch = async (i
                         responseHeaders.set(key, value);
                     }
                 }
-                resolve(new Response(Buffer.concat(chunks), { status, headers: responseHeaders }));
+                const body = status === 204 || status === 304 ? null : Buffer.concat(chunks);
+                resolve(new Response(body, { status, headers: responseHeaders }));
             });
 
             res.on("error", reject);

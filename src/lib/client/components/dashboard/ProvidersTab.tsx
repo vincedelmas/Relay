@@ -959,6 +959,11 @@ function EditProviderDialog({ provider, builtins, onClose }: EditProviderDialogP
                                     onChange={(e) => setUrl(e.target.value)}
                                     className="font-mono text-xs"
                                 />
+                                {url.trim() !== (provider.url ?? "") && (
+                                    <p className="text-[11px] text-warning">
+                                        Changing the endpoint URL clears stored credentials and cached tools.
+                                    </p>
+                                )}
                             </div>
                             <div className="flex flex-col gap-1.5">
                                 <span className="text-xs font-medium text-muted-foreground">Upstream Authentication</span>

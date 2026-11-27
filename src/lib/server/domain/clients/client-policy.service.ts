@@ -57,29 +57,49 @@ export const getMcpClientAccess = (accessTokenClaims: Record<string, unknown>): 
 
 export const saveClientPolicy = (input: {
     clientId: string;
-    readOnly: boolean;
-    mode: ClientGatewayMode;
-    allowedProviderIds: string[];
+    mode?: ClientGatewayMode;
+    readOnly?: boolean;
+    allowedProviderIds?: string[];
+    toggleProvider?: { providerId: string; allowed: boolean };
 }) => {
-    const now = new Date();
-    const deduped = Array.from(new Set(input.allowedProviderIds));
+    db.transaction((tx) => {
+        const now = new Date();
+        const existing = tx
+            .select()
+            .from(clientPolicy)
+            .where(eq(clientPolicy.clientId, input.clientId))
+            .get();
 
-    db.insert(clientPolicy)
-        .values({
-            updatedAt: now,
-            mode: input.mode,
-            clientId: input.clientId,
-            readOnly: input.readOnly,
-            allowedProviderIds: deduped,
-        }).onConflictDoUpdate({
-        target: clientPolicy.clientId,
-        set: {
-            updatedAt: now,
-            mode: input.mode,
-            readOnly: input.readOnly,
-            allowedProviderIds: deduped,
-        },
-    }).run();
+        const mode = input.mode ?? existing?.mode ?? "code";
+        const readOnly = input.readOnly ?? existing?.readOnly ?? false;
+        let allowedProviderIds = input.allowedProviderIds !== undefined
+            ? Array.from(new Set(input.allowedProviderIds))
+            : [...(existing?.allowedProviderIds ?? [])];
+
+        if (input.toggleProvider) {
+            const { providerId, allowed } = input.toggleProvider;
+            allowedProviderIds = allowed
+                ? Array.from(new Set([...allowedProviderIds, providerId]))
+                : allowedProviderIds.filter((id) => id !== providerId);
+        }
+
+        tx.insert(clientPolicy)
+            .values({
+                mode,
+                readOnly,
+                updatedAt: now,
+                allowedProviderIds,
+                clientId: input.clientId,
+            }).onConflictDoUpdate({
+            target: clientPolicy.clientId,
+            set: {
+                mode,
+                readOnly,
+                updatedAt: now,
+                allowedProviderIds,
+            },
+        }).run();
+    });
 };
 
 
