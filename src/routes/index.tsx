@@ -1,20 +1,18 @@
 import {useState} from "react";
 import {clientEnv} from "@/env/client";
 import {authClient} from "@/lib/client/auth-client";
+import {useSuspenseQuery} from "@tanstack/react-query";
 import {Badge} from "@/lib/client/components/ui/badge";
 import {Button} from "@/lib/client/components/ui/button";
-import {getGatewayState} from "@/lib/server/functions/gateway";
 import {LogsTab} from "@/lib/client/components/dashboard/LogsTab";
+import {createFileRoute, useNavigate} from "@tanstack/react-router";
 import {ClientsTab} from "@/lib/client/components/dashboard/ClientsTab";
 import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {ProvidersTab} from "@/lib/client/components/dashboard/ProvidersTab";
 import {PlaygroundTab} from "@/lib/client/components/dashboard/PlaygroundTab";
-import {createFileRoute, useNavigate, useRouter} from "@tanstack/react-router";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/lib/client/components/ui/tabs";
+import {gatewayStateOptions} from "@/lib/client/react-query/query-options/gateway.options";
 import {Activity, AlertCircle, Check, CheckCircle2, Copy, KeyRound, LogOut, Radio, Server, Terminal} from "lucide-react";
-
-
-const mcpEndpoint = new URL("/api/mcp", clientEnv.VITE_BASE_URL).href;
 
 
 export const Route = createFileRoute("/")({
@@ -22,21 +20,21 @@ export const Route = createFileRoute("/")({
         connected: typeof search.connected === "string" ? search.connected : undefined,
         oauthError: typeof search.oauthError === "string" ? search.oauthError : undefined,
     }),
-    loader: () => getGatewayState(),
+    loader: ({ context }) => {
+        return context.queryClient.query(gatewayStateOptions);
+    },
     component: DashboardPage,
 });
 
 
+const mcpEndpoint = new URL("/api/mcp", clientEnv.VITE_BASE_URL).href;
+
+
 function DashboardPage() {
-    const router = useRouter();
     const navigate = useNavigate();
-    const data = Route.useLoaderData();
     const { connected, oauthError } = Route.useSearch();
     const [copied, setCopied] = useState(false);
-
-    const refresh = async () => {
-        await router.invalidate();
-    };
+    const { data } = useSuspenseQuery(gatewayStateOptions);
 
     const copyEndpoint = async () => {
         await navigator.clipboard.writeText(mcpEndpoint);
@@ -145,7 +143,6 @@ function DashboardPage() {
 
                 <TabsContent value="providers">
                     <ProvidersTab
-                        onChanged={refresh}
                         builtins={data.builtins}
                         providers={data.providers}
                     />
@@ -153,7 +150,6 @@ function DashboardPage() {
 
                 <TabsContent value="clients">
                     <ClientsTab
-                        onChanged={refresh}
                         clients={data.clients}
                         mcpEndpoint={mcpEndpoint}
                         providers={data.providers}
@@ -161,15 +157,12 @@ function DashboardPage() {
                 </TabsContent>
 
                 <TabsContent value="playground">
-                    <PlaygroundTab
-                        onExecuted={refresh}
-                    />
+                    <PlaygroundTab/>
                 </TabsContent>
 
                 <TabsContent value="logs">
                     <LogsTab
                         logs={data.logs}
-                        onChanged={refresh}
                     />
                 </TabsContent>
             </Tabs>

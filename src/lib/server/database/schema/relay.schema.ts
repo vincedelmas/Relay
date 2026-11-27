@@ -2,11 +2,7 @@ import {customJson} from "@/lib/server/database/custom-types";
 import {oauthClient} from "@/lib/server/database/schema/oauth.schema";
 import type {OAuthDiscoveryState} from "@modelcontextprotocol/sdk/client/auth.js";
 import {index, integer, snakeCase, text, uniqueIndex} from "drizzle-orm/sqlite-core";
-
-
-export type ClientGatewayMode = "code" | "classic";
-export type ProviderKind = "remote_mcp" | "builtin";
-export type ProviderAuthType = "none" | "oauth" | "bearer";
+import type {ClientGatewayMode, ProviderAuthType, ProviderKind} from "@/lib/types/gateway.types";
 
 
 export const provider = snakeCase.table("provider", {

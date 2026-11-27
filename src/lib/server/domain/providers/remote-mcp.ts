@@ -1,30 +1,10 @@
 import {decryptSecret} from "@/lib/server/core/crypto";
 import {Client} from "@modelcontextprotocol/sdk/client/index.js";
-import type {ProviderAuthType} from "@/lib/server/database/schema";
 import {UnauthorizedError} from "@modelcontextprotocol/sdk/client/auth.js";
 import type {FetchLike} from "@modelcontextprotocol/sdk/shared/transport.js";
+import type {RemoteProviderDescriptor, UpstreamToolInfo} from "@/lib/types/gateway.types";
 import {StreamableHTTPClientTransport, StreamableHTTPError} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {ensureFreshUpstreamTokens, RelayUpstreamOAuthProvider, UpstreamReauthRequiredError} from "@/lib/server/domain/providers/upstream-oauth";
-
-
-export interface RemoteProviderDescriptor {
-    id: string;
-    url: string;
-    name: string;
-    authType: ProviderAuthType;
-    encryptedAuthSecret: string | null;
-}
-
-
-export interface UpstreamToolInfo {
-    name: string;
-    title?: string;
-    readOnly: boolean;
-    description: string;
-    destructive: boolean;
-    inputSchema: Record<string, unknown>;
-    outputSchema?: Record<string, unknown>;
-}
 
 
 const isAuthFailure = (err: unknown): boolean => {

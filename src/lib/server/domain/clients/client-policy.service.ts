@@ -1,17 +1,8 @@
 import {db} from "@/lib/server/database/db";
 import {and, desc, eq, gt, sql} from "drizzle-orm";
 import {MCP_RESOURCE} from "@/lib/server/core/mcp/config";
-import {ClientGatewayMode, clientPolicy, oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken, session, user, verification} from "@/lib/server/database/schema";
-
-
-export interface McpClientAccess {
-    userId: string;
-    clientId: string;
-    readOnly: boolean;
-    clientName: string;
-    mode: ClientGatewayMode;
-    allowedProviderIds: string[];
-}
+import type {ClientGatewayMode, McpClientAccess} from "@/lib/types/gateway.types";
+import {clientPolicy, oauthAccessToken, oauthClient, oauthConsent, oauthRefreshToken, session, user, verification} from "@/lib/server/database/schema";
 
 
 // Signature, issuer, audience and expiry are verified by @better-auth/mcp first.

@@ -1,5 +1,5 @@
 import {serverEnv} from "@/env/server";
-import type {BuiltInProviderDefinition} from "@/lib/server/domain/providers/types";
+import type {BuiltInProviderDefinition} from "@/lib/types/gateway.types";
 
 
 const STEAM_API_BASE = "https://api.steampowered.com";

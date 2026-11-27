@@ -1,32 +1,5 @@
+import type {QuickJsSandboxLimits, QuickJsSandboxOptions, QuickJsSandboxResult} from "@/lib/types/gateway.types";
 import {newQuickJSWASMModule, type QuickJSContext, type QuickJSDeferredPromise, type QuickJSHandle, type QuickJSWASMModule, RELEASE_SYNC} from "quickjs-emscripten";
-
-
-interface QuickJsSandboxLimits {
-    cpuTimeoutMs?: number;
-    maxToolCalls?: number;
-    maxLogsBytes?: number;
-    wallTimeoutMs?: number;
-    maxResultBytes?: number;
-    memoryLimitBytes?: number;
-    maxStackSizeBytes?: number;
-    maxToolResponseBytes?: number;
-}
-
-
-export interface QuickJsSandboxResult {
-    logs: string[];
-    result: unknown;
-    durationMs: number;
-    toolCallCount: number;
-}
-
-
-export interface QuickJsSandboxOptions {
-    code: string;
-    limits?: QuickJsSandboxLimits;
-    toolManifest: Record<string, string[]>;
-    callTool: (providerSlug: string, jsName: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>;
-}
 
 
 let wasmModulePromise: Promise<QuickJSWASMModule> | null = null;

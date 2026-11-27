@@ -1,14 +1,18 @@
 import {type SubmitEvent, useState} from "react";
-import {useMutation} from "@tanstack/react-query";
 import {Badge} from "@/lib/client/components/ui/badge";
 import {Input} from "@/lib/client/components/ui/input";
 import {Label} from "@/lib/client/components/ui/label";
 import {Button} from "@/lib/client/components/ui/button";
 import {Textarea} from "@/lib/client/components/ui/textarea";
-import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {AlertCircle, Code2, Play, Search, Terminal} from "lucide-react";
+import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/lib/client/components/ui/card";
-import {playgroundCallFn, playgroundDescribeFn, playgroundExecuteFn, playgroundSearchFn} from "@/lib/server/functions/gateway";
+import {
+    usePlaygroundCallMutation,
+    usePlaygroundDescribeMutation,
+    usePlaygroundExecuteMutation,
+    usePlaygroundSearchMutation,
+} from "@/lib/client/react-query/query-mutations/gateway.mutations";
 
 
 const DEFAULT_SCRIPT = `// List every available provider & tool in the sandbox:
@@ -19,45 +23,20 @@ console.log("Loaded namespaces:", Object.keys(catalog));
 return catalog;`;
 
 
-interface PlaygroundTabProps {
-    onExecuted: () => Promise<void>;
-}
-
-
-export function PlaygroundTab({ onExecuted }: PlaygroundTabProps) {
+export function PlaygroundTab() {
     const [searchQuery, setSearchQuery] = useState("");
-    const [scriptCode, setScriptCode] = useState(DEFAULT_SCRIPT);
-    const [callArgsText, setCallArgsText] = useState("{}");
     const [selectedToolId, setSelectedToolId] = useState("");
+    const [callArgsText, setCallArgsText] = useState("{}");
     const [runnerMode, setRunnerMode] = useState<"execute" | "call">("execute");
+    const [scriptCode, setScriptCode] = useState(DEFAULT_SCRIPT);
 
-    const searchMutation = useMutation({
-        mutationFn: (query: string) => playgroundSearchFn({ data: { query: query || "*", limit: 20 } }),
-    });
+    const callMutation = usePlaygroundCallMutation();
+    const searchMutation = usePlaygroundSearchMutation();
+    const executeMutation = usePlaygroundExecuteMutation();
+    const describeMutation = usePlaygroundDescribeMutation();
 
-    const describeMutation = useMutation({
-        mutationFn: (toolId: string) => playgroundDescribeFn({ data: { tools: [toolId] } }),
-    });
-
-    const callMutation = useMutation({
-        mutationFn: async () => {
-            const parsed = JSON.parse(callArgsText || "{}") as Record<string, unknown>;
-            return playgroundCallFn({ data: { tool: selectedToolId, args: parsed } });
-        },
-        onSettled: async () => {
-            await onExecuted();
-        },
-    });
-
-    const executeMutation = useMutation({
-        mutationFn: () => playgroundExecuteFn({ data: { code: scriptCode } }),
-        onSettled: async () => {
-            await onExecuted();
-        },
-    });
-
-    const handleSearch = (ev: SubmitEvent<HTMLFormElement>) => {
-        ev.preventDefault();
+    const handleSearch = (event: SubmitEvent<HTMLFormElement>) => {
+        event.preventDefault();
         searchMutation.mutate(searchQuery);
     };
 
@@ -81,24 +60,22 @@ export function PlaygroundTab({ onExecuted }: PlaygroundTabProps) {
                 <CardContent className="flex flex-col gap-3">
                     <form onSubmit={handleSearch} className="flex gap-2">
                         <Input
-                            value={searchQuery}
                             aria-label="Search tools"
-                            placeholder="e.g. steam playtime, recipe, or *"
+                            value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="e.g. steam playtime, recipe, or *"
                         />
                         <Button type="submit" size="sm" disabled={searchMutation.isPending}>
                             Search
                         </Button>
                     </form>
 
-                    {searchMutation.data &&
+                    {searchMutation.data && (
                         <div className="flex max-h-64 flex-col gap-1 overflow-y-auto rounded-lg border p-1.5">
-                            {searchMutation.data.tools.length === 0 ?
-                                <p className="py-4 text-center text-xs text-muted-foreground">
-                                    No matching tools found.
-                                </p>
-                                :
-                                searchMutation.data.tools.map((hit) =>
+                            {searchMutation.data.tools.length === 0 ? (
+                                <p className="py-4 text-center text-xs text-muted-foreground">No matching tools found.</p>
+                            ) : (
+                                searchMutation.data.tools.map((hit) => (
                                     <button
                                         key={hit.id}
                                         type="button"
@@ -110,25 +87,19 @@ export function PlaygroundTab({ onExecuted }: PlaygroundTabProps) {
                                         }`}
                                     >
                                         <div className="flex w-full items-center justify-between gap-2">
-                                            <code className="truncate font-mono text-xs font-medium">
-                                                {hit.id}
-                                            </code>
-                                            {hit.readOnly &&
-                                                <Badge variant="outline">
-                                                    ro
-                                                </Badge>
-                                            }
+                                            <code className="truncate font-mono text-xs font-medium">{hit.id}</code>
+                                            {hit.readOnly && <Badge variant="outline">ro</Badge>}
                                         </div>
-                                        {hit.description &&
+                                        {hit.description && (
                                             <span className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                                                 {hit.description}
                                             </span>
-                                        }
+                                        )}
                                     </button>
-                                )
-                            }
+                                ))
+                            )}
                         </div>
-                    }
+                    )}
 
                     {describeMutation.data?.tools[0] && (
                         <div className="flex flex-col gap-1.5">
@@ -203,7 +174,7 @@ export function PlaygroundTab({ onExecuted }: PlaygroundTabProps) {
                                 <Button
                                     size="sm"
                                     disabled={executeMutation.isPending || !scriptCode.trim()}
-                                    onClick={() => executeMutation.mutate()}
+                                    onClick={() => executeMutation.mutate(scriptCode)}
                                 >
                                     <Play/>
                                     {executeMutation.isPending ? "Running..." : "Run in QuickJS"}
@@ -264,7 +235,7 @@ export function PlaygroundTab({ onExecuted }: PlaygroundTabProps) {
                                 <Button
                                     size="sm"
                                     disabled={callMutation.isPending || !selectedToolId.trim()}
-                                    onClick={() => callMutation.mutate()}
+                                    onClick={() => callMutation.mutate({ tool: selectedToolId, argsText: callArgsText })}
                                 >
                                     <Play/>
                                     {callMutation.isPending ? "Calling..." : "Invoke tool"}

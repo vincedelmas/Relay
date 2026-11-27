@@ -1,15 +1,15 @@
 import {useState} from "react";
-import {useMutation} from "@tanstack/react-query";
-import {authClient} from "@/lib/client/auth-client";
 import {createFileRoute} from "@tanstack/react-router";
 import {Badge} from "@/lib/client/components/ui/badge";
 import {Label} from "@/lib/client/components/ui/label";
 import {Button} from "@/lib/client/components/ui/button";
 import {Checkbox} from "@/lib/client/components/ui/checkbox";
 import {Separator} from "@/lib/client/components/ui/separator";
+import type {ClientGatewayMode} from "@/lib/types/gateway.types";
 import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {AlertCircle, Code2, Layers, Plug, ShieldCheck} from "lucide-react";
-import {getOAuthConsentRequestFn, saveClientPolicyFn} from "@/lib/server/functions/gateway";
+import {oauthConsentRequestOptions} from "@/lib/client/react-query/query-options/gateway.options";
+import {useOAuthConsentMutation} from "@/lib/client/react-query/query-mutations/gateway.mutations";
 import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "@/lib/client/components/ui/card";
 
 
@@ -18,10 +18,10 @@ export const Route = createFileRoute("/oauth/consent")({
     beforeLoad: () => ({
         oauthQuery: window.location.search.slice(1),
     }),
-    loader: async ({ context }) => {
-        const request = await getOAuthConsentRequestFn({ data: { oauthQuery: context.oauthQuery } });
-        return { oauthQuery: context.oauthQuery, request };
-    },
+    loader: async ({ context }) => ({
+        oauthQuery: context.oauthQuery,
+        request: await context.queryClient.query(oauthConsentRequestOptions(context.oauthQuery)),
+    }),
     component: OAuthConsentPage,
     head: () => ({ meta: [{ title: "Authorize client — Relay" }] }),
 });
@@ -30,8 +30,9 @@ export const Route = createFileRoute("/oauth/consent")({
 function OAuthConsentPage() {
     const { oauthQuery, request } = Route.useLoaderData();
     const [readOnly, setReadOnly] = useState(false);
-    const [mode, setMode] = useState<"code" | "classic">("code");
+    const [mode, setMode] = useState<ClientGatewayMode>("code");
     const [selectedProviders, setSelectedProviders] = useState<string[]>(() => request.providers.map((p) => p.id));
+    const mutation = useOAuthConsentMutation({ mode, readOnly, oauthQuery, clientId: request.clientId, allowedProviderIds: selectedProviders });
 
     const toggleProvider = (providerId: string, checked: boolean) => {
         setSelectedProviders((prev) =>
@@ -40,31 +41,6 @@ function OAuthConsentPage() {
                 : prev.filter((id) => id !== providerId),
         );
     };
-
-    const mutation = useMutation({
-        mutationFn: async (accept: boolean) => {
-            if (accept) {
-                await saveClientPolicyFn({
-                    data: {
-                        mode,
-                        readOnly,
-                        clientId: request.clientId,
-                        allowedProviderIds: selectedProviders,
-                    },
-                });
-            }
-
-            const { data, error } = await authClient.oauth2.consent({ accept, oauth_query: oauthQuery });
-            if (error) {
-                throw new Error(error.message || "Consent request failed.");
-            }
-
-            return data;
-        },
-        onSuccess: (data) => {
-            window.location.assign(data.url);
-        },
-    });
 
     return (
         <main className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-6 py-12">

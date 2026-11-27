@@ -2,25 +2,12 @@ import crypto from "node:crypto";
 import {desc, lt} from "drizzle-orm";
 import {db} from "@/lib/server/database/db";
 import {executionLog} from "@/lib/server/database/schema";
+import type {RecordExecutionLogInput} from "@/lib/types/gateway.types";
 
 
 const LOG_RETENTION_DAYS = 30;
 const MAX_CODE_LOG_CHARS = 4_000;
 const MAX_ERROR_LOG_CHARS = 1_000;
-
-
-export interface RecordExecutionLogInput {
-    durationMs: number;
-    code?: string | null;
-    toolCallCount: number;
-    status: "ok" | "error";
-    clientId?: string | null;
-    kind: "call" | "execute";
-    toolName?: string | null;
-    clientName?: string | null;
-    errorMessage?: string | null;
-    providerSlug?: string | null;
-}
 
 
 export const recordExecutionLog = (input: RecordExecutionLogInput): void => {

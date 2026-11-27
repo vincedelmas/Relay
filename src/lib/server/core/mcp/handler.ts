@@ -2,18 +2,12 @@ import * as z from "zod";
 import {auth} from "@/lib/server/core/auth";
 import {requireMcpAuth} from "@better-auth/mcp";
 import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
+import {getMcpClientAccess} from "@/lib/server/domain/clients/client-policy.service";
+import type {GatewayPolicyContext, McpClientAccess} from "@/lib/types/gateway.types";
 import {MCP_ACCESS_SCOPE, MCP_RESOURCE, MCP_SCOPES} from "@/lib/server/core/mcp/config";
 import {CallToolRequestSchema, ListToolsRequestSchema} from "@modelcontextprotocol/sdk/types.js";
-import {getMcpClientAccess, type McpClientAccess} from "@/lib/server/domain/clients/client-policy.service";
 import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import {
-    describePermittedTools,
-    executeCodeModeScript,
-    type GatewayPolicyContext,
-    invokePermittedTool,
-    listPermittedClassicTools,
-    searchPermittedTools,
-} from "@/lib/server/domain/providers/provider.service";
+import {describePermittedTools, executeCodeModeScript, invokePermittedTool, listPermittedClassicTools, searchPermittedTools} from "@/lib/server/domain/providers/provider.service";
 
 
 const unauthorizedJsonRpc = (message: string) => new Response(JSON.stringify({

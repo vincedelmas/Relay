@@ -1,53 +1,25 @@
-import {useState} from "react";
-import {useMutation} from "@tanstack/react-query";
 import {Badge} from "@/lib/client/components/ui/badge";
 import {Button} from "@/lib/client/components/ui/button";
 import {Switch} from "@/lib/client/components/ui/switch";
 import {Checkbox} from "@/lib/client/components/ui/checkbox";
 import {Alert, AlertDescription} from "@/lib/client/components/ui/alert";
 import {AlertCircle, Code2, KeyRound, Layers, Unplug} from "lucide-react";
-import {disconnectClientFn, saveClientPolicyFn} from "@/lib/server/functions/gateway";
-import type {GatewayClient, GatewayProvider} from "@/lib/client/components/dashboard/types";
+import type {GatewayClient, GatewayProvider} from "@/lib/types/gateway.types";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/lib/client/components/ui/card";
+import {useDisconnectClientMutation, useSaveClientPolicyMutation} from "@/lib/client/react-query/query-mutations/gateway.mutations";
 
 
 interface ClientsTabProps {
     mcpEndpoint: string;
     clients: GatewayClient[];
     providers: GatewayProvider[];
-    onChanged: () => Promise<void>;
 }
 
 
-export function ClientsTab({ clients, providers, mcpEndpoint, onChanged }: ClientsTabProps) {
-    const [error, setError] = useState<string | null>(null);
-
-    const policyMutation = useMutation({
-        mutationFn: (data: {
-            clientId: string;
-            readOnly: boolean;
-            mode: "code" | "classic";
-            allowedProviderIds: string[];
-        }) => saveClientPolicyFn({ data }),
-        onMutate: () => setError(null),
-        onError: (err) => {
-            return setError(err instanceof Error ? err.message : "Failed to update client policy.");
-        },
-        onSuccess: async () => {
-            await onChanged();
-        },
-    });
-
-    const disconnectMutation = useMutation({
-        mutationFn: (clientId: string) => disconnectClientFn({ data: { clientId } }),
-        onMutate: () => setError(null),
-        onError: (err) => {
-            return setError(err instanceof Error ? err.message : "Failed to disconnect client.");
-        },
-        onSuccess: async () => {
-            await onChanged();
-        },
-    });
+export function ClientsTab({ clients, providers, mcpEndpoint }: ClientsTabProps) {
+    const policyMutation = useSaveClientPolicyMutation();
+    const disconnectMutation = useDisconnectClientMutation();
+    const error = policyMutation.error?.message ?? disconnectMutation.error?.message ?? null;
 
     const toggleAllowedProvider = (client: GatewayClient, providerId: string, checked: boolean) => {
         const nextAllowed = checked

@@ -3,6 +3,7 @@ import {db} from "@/lib/server/database/db";
 import {logger} from "@/lib/server/core/logger";
 import {and, asc, eq, inArray, sql} from "drizzle-orm";
 import {runQuickJsSandbox} from "@/lib/server/core/sandbox/quickjs";
+import {provider, providerTool} from "@/lib/server/database/schema";
 import {getBuiltInProvider} from "@/lib/server/domain/providers/builtins";
 import {assignUniqueJsNames, toProviderSlug} from "@/lib/utils/identifiers";
 import {decryptJson, encryptJson, encryptSecret} from "@/lib/server/core/crypto";
@@ -10,54 +11,7 @@ import {recordExecutionLog} from "@/lib/server/domain/logs/execution-log.service
 import {extractSchemaSearchTerms, renderToolSignature} from "@/lib/utils/json-schema-ts";
 import {callRemoteMcpTool, listRemoteMcpTools} from "@/lib/server/domain/providers/remote-mcp";
 import {clearUpstreamOAuthState, hasStoredUpstreamTokens} from "@/lib/server/domain/providers/upstream-oauth";
-import {provider, type ProviderAuthType, type ProviderKind, providerTool} from "@/lib/server/database/schema";
-
-
-export interface GatewayPolicyContext {
-    readOnly: boolean;
-    clientId?: string | null;
-    clientName?: string | null;
-    /** Null means admin/playground bypass (all enabled providers allowed) */
-    allowedProviderIds: string[] | null;
-}
-
-
-export interface ToolSearchHit {
-    id: string;
-    jsName: string;
-    jsCall: string;
-    toolName: string;
-    readOnly: boolean;
-    description: string;
-    title: string | null;
-    providerSlug: string;
-    providerName: string;
-    destructive: boolean;
-}
-
-
-export interface ToolDescriptionEntry {
-    id: string;
-    jsName: string;
-    toolName: string;
-    readOnly: boolean;
-    signature: string;
-    description: string;
-    providerSlug: string;
-    title: string | null;
-    destructive: boolean;
-    inputSchema: Record<string, unknown>;
-}
-
-
-export interface InvokedToolResponse {
-    /** Unwrapped JSON or string value ideal for Code Mode scripts */
-    data: unknown;
-    isError: boolean;
-    structuredContent?: Record<string, unknown>;
-    /** Raw MCP content blocks for direct tool responses */
-    content: Array<{ type: "text"; text: string }>;
-}
+import type {GatewayPolicyContext, InvokedToolResponse, ProviderAuthType, ProviderKind, ToolDescriptionEntry, ToolSearchHit} from "@/lib/types/gateway.types";
 
 
 const sanitizeFtsQuery = (raw: string): string | null => {

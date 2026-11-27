@@ -1,5 +1,5 @@
+import type {BuiltInProviderDefinition} from "@/lib/types/gateway.types";
 import {steamBuiltInProvider} from "@/lib/server/domain/providers/builtins/steam";
-import type {BuiltInProviderDefinition} from "@/lib/server/domain/providers/types";
 
 
 const BUILTIN_PROVIDERS: ReadonlyMap<string, BuiltInProviderDefinition> = new Map([
