@@ -14,11 +14,12 @@ Personal self-hosted MCP Gateway with OAuth 2.1, per-client permissions, built-i
 
 ## Development
 
+Set `OWNER_EMAIL`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in `.env` (authorized redirect URI: `http://localhost:3000/api/auth/callback/google`), then:
+
 ```bash
 cp .env.example .env
 bun install
 bun run db:init
-bun run owner:setup you@example.com "your-strong-password" "Vince"
 bun run dev
 ```
 

@@ -15,7 +15,6 @@
         "typecheck": "tsc --noEmit",
         "build": "bun --bun vite build",
         "dev": "bun --bun vite dev --port 3000",
-        "owner:setup": "bun scripts/setup-owner.ts",
         "db:init": "mkdir -p instance && bun run dk migrate",
         "routes:generate": "bun --no-env-file scripts/generate-routes.ts",
         "auth:generate": "bunx --bun auth@1.7.25 generate --yes --config src/lib/server/core/auth.ts --output src/lib/server/database/schema/auth.schema.ts"

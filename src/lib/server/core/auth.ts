@@ -1,7 +1,9 @@
+import {eq} from "drizzle-orm";
 import {mcp} from "@better-auth/mcp";
 import {cimd} from "@better-auth/cimd";
 import {clientEnv} from "@/env/client";
 import {serverEnv} from "@/env/server";
+import {APIError} from "better-auth/api";
 import {jwt} from "better-auth/plugins";
 import {db} from "@/lib/server/database/db";
 import {betterAuth} from "better-auth/minimal";
@@ -14,6 +16,24 @@ import {MCP_RESOURCE, MCP_SCOPES} from "@/lib/server/core/mcp/config";
 import {fetchClientMetadataResource} from "@/lib/server/core/cimd-fetch";
 
 
+const googleOAuthConfig = serverEnv.GOOGLE_CLIENT_ID && serverEnv.GOOGLE_CLIENT_SECRET
+    ? {
+        clientId: serverEnv.GOOGLE_CLIENT_ID,
+        clientSecret: serverEnv.GOOGLE_CLIENT_SECRET,
+    }
+    : null;
+
+
+const assertOwnerEmail = (email: string | undefined, emailVerified: boolean) => {
+    if (!serverEnv.OWNER_EMAIL || !emailVerified || email?.toLowerCase() !== serverEnv.OWNER_EMAIL) {
+        throw new APIError("FORBIDDEN", {
+            code: "OWNER_ONLY",
+            message: "This Relay instance is restricted to its configured owner.",
+        });
+    }
+};
+
+
 const getAuthConfig = createServerOnlyFn(() => betterAuth({
     appName: "Relay",
     baseURL: clientEnv.VITE_BASE_URL,
@@ -21,6 +41,9 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
     database: drizzleAdapter(db, { schema, provider: "sqlite" }),
     telemetry: {
         enabled: false,
+    },
+    onAPIError: {
+        errorURL: new URL("/login", clientEnv.VITE_BASE_URL).toString(),
     },
     logger: {
         level: "info",
@@ -32,6 +55,35 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
             }, message);
         },
     },
+    databaseHooks: {
+        account: {
+            create: {
+                before: async (account) => ({ data: { ...account, idToken: null } }),
+            },
+            update: {
+                before: async (account) => ({ data: { ...account, idToken: null } }),
+            },
+        },
+        user: {
+            create: {
+                before: async (newUser) => {
+                    assertOwnerEmail(newUser.email, Boolean(newUser.emailVerified));
+                },
+            },
+        },
+        session: {
+            create: {
+                before: async (newSession) => {
+                    const existingUser = db
+                        .select({ email: schema.user.email, emailVerified: schema.user.emailVerified })
+                        .from(schema.user)
+                        .where(eq(schema.user.id, newSession.userId))
+                        .get();
+                    assertOwnerEmail(existingUser?.email, Boolean(existingUser?.emailVerified));
+                },
+            },
+        },
+    },
     session: {
         cookieCache: {
             enabled: false,
@@ -40,12 +92,8 @@ const getAuthConfig = createServerOnlyFn(() => betterAuth({
     account: {
         encryptOAuthTokens: true,
     },
-    emailAndPassword: {
-        enabled: true,
-        autoSignIn: true,
-        disableSignUp: true,
-        minPasswordLength: 8,
-        maxPasswordLength: 128,
+    socialProviders: {
+        ...(googleOAuthConfig ? { google: googleOAuthConfig } : {}),
     },
     advanced: {
         cookiePrefix: "relay",

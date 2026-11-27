@@ -10,6 +10,11 @@ export const serverEnv = createEnv({
         // Better Auth
         BETTER_AUTH_SECRET: z.string().min(20),
 
+        // Single-owner Google OAuth lock
+        OWNER_EMAIL: z.email().transform((value) => value.toLowerCase()).optional(),
+        GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+        GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
+
         // Upstream OAuth token encryption
         RELAY_ENCRYPTION_KEY: z.string().min(20),
 
