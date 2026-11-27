@@ -17,6 +17,8 @@ RUN test -n "$VITE_BASE_URL"
 RUN mkdir -p /tmp/build-db && \
     VITE_BASE_URL="$VITE_BASE_URL" \
     DATABASE_URL=/tmp/build-db/site.db \
+    BETTER_AUTH_SECRET="build-only-placeholder-secret-unused-at-runtime" \
+    RELAY_ENCRYPTION_KEY="build-only-placeholder-secret-unused-at-runtime" \
     SKIP_ENV_VALIDATION=true \
     bun run build
 
