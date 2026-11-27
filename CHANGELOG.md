@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/vincedelmas/Relay/compare/v0.2.0...v0.2.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **docker:** supply build-only auth secret for TanStack Start prerender ([7961c20](https://github.com/vincedelmas/Relay/commit/7961c207cd770abb9792b1f60262adc2a14b84d7))
+
 ## [0.2.0](https://github.com/vincedelmas/Relay/compare/v0.1.0...v0.2.0) (2026-11-27)
 
 
