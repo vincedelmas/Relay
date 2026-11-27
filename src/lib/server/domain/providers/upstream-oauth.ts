@@ -46,10 +46,7 @@ const disconnectGenerations = new Map<string, number>();
 
 const createTimeoutFetch = (timeoutMs: number): FetchLike => (input, init) => {
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
-
-    const signal = init?.signal
-        ? AbortSignal.any([init.signal, timeoutSignal])
-        : timeoutSignal;
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
 
     return fetch(input, { ...init, signal });
 };
