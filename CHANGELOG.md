@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vincedelmas/Relay/compare/v0.2.1...v0.2.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* **oauth:** probe upstream MCP 401 challenge to preserve offline_access scope ([4285165](https://github.com/vincedelmas/Relay/commit/4285165140344bb0cad9248177fef3d4061cdf44))
+
 ## [0.2.1](https://github.com/vincedelmas/Relay/compare/v0.2.0...v0.2.1) (2026-11-27)
 
 
